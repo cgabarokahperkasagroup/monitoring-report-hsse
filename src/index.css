@@ -1,0 +1,123 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 213 60% 97%;
+    --foreground: 215 28% 17%;
+    --card: 0 0% 100%;
+    --card-foreground: 215 28% 17%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 28% 17%;
+    --primary: 215 59% 26%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 215 45% 40%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 213 60% 95%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 36 65% 48%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 62% 47%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 215 20% 88%;
+    --input: 215 20% 88%;
+    --ring: 215 59% 26%;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body {
+    @apply bg-bg-light text-foreground font-sans;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer components {
+  .sidebar-link {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150;
+    @apply text-blue-100 hover:bg-white/10 hover:text-white;
+  }
+  .sidebar-link.active {
+    background-color: #C8922A;
+    @apply text-white shadow-sm;
+  }
+  .sidebar-link-parent-active {
+    @apply bg-white/10 text-white;
+  }
+  .badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border;
+  }
+  .card-stat {
+    @apply bg-white rounded-xl p-5 shadow-sm border border-border;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #f1f5f9; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* Timeline styles */
+.timeline-line {
+  @apply absolute left-4 top-8 bottom-0 w-0.5 bg-border;
+}
+
+/* ── A4 page rule – margin: 0 menghilangkan header/footer bawaan browser ── */
+@page {
+  size: A4 portrait;
+  margin: 0;
+}
+
+/* ── Print / PDF report styles ───────────────────────────────── */
+@media print {
+  /* Sembunyikan toolbar layar */
+  .no-print { display: none !important; }
+
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 210mm !important;
+    background: #fff !important;
+    color: #000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Print area: full A4, padding sebagai pengganti margin halaman */
+  .print-area {
+    display: block !important;
+    width: 210mm !important;
+    max-width: 210mm !important;
+    /* 12mm padding kiri/kanan dan atas/bawah menggantikan @page margin */
+    padding: 12mm 14mm !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+    font-family: Arial, sans-serif !important;
+    font-size: 9pt !important;
+    line-height: 1.3 !important;
+  }
+
+  /* Tabel: lebar penuh, teks wrap, tidak overflow */
+  table {
+    width: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+  }
+  td, th {
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+  tr    { page-break-inside: avoid; }
+  thead { display: table-header-group; }
+  tfoot { display: table-footer-group; }
+
+  /* Foto tidak keluar halaman */
+  img {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+}
