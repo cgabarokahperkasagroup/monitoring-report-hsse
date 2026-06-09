@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect } from 'react'
 import { useAuthStore } from '@/stores/authStore'
 import { ToastProvider } from '@/components/ui/toast'
 import { AppLayout } from '@/components/layout/AppLayout'
@@ -31,6 +32,8 @@ import PISKapalDetailPage from '@/pages/PISKapalDetailPage'
 import EditPISKapalPage from '@/pages/EditPISKapalPage'
 import NFBVettingPage from '@/pages/NFBVettingPage'
 import CreateVisitPlanPage from '@/pages/CreateVisitPlanPage'
+import CreateVisitRealisasiPage from '@/pages/CreateVisitRealisasiPage'
+import VesselComplianceVisitDetailPage from '@/pages/VesselComplianceVisitDetailPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuthStore()
@@ -45,6 +48,9 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  const { initSession } = useAuthStore()
+  useEffect(() => { initSession() }, [initSession])
+
   return (
     <ToastProvider>
       <BrowserRouter>
@@ -61,6 +67,8 @@ export default function App() {
             <Route path="findings/:id" element={<FindingDetailPage />} />
             <Route path="vessel-compliance" element={<VesselCompliancePage />} />
             <Route path="vessel-compliance/plan/new" element={<CreateVisitPlanPage />} />
+            <Route path="vessel-compliance/plan/realisasi" element={<CreateVisitRealisasiPage />} />
+            <Route path="vessel-compliance/visit/:id" element={<VesselComplianceVisitDetailPage />} />
             <Route path="owner-findings" element={<FindingsPage ownerOnly />} />
             <Route path="reports" element={<ReportsPage />} />
             <Route path="notifications" element={<NotificationsPage />} />

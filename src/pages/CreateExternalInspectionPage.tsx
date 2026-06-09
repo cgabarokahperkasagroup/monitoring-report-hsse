@@ -1,12 +1,14 @@
-import { useState, FormEvent } from 'react'
+import { useState, useEffect, FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Shield, Info, Plus, Trash2 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input, Textarea, Select } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
-import { mockBusinessUnits } from '@/data/mockData'
-import { useShips, shipOptions } from '@/hooks/useShips'
+import { useAuthStore } from '@/stores/authStore'
+import { supabase } from '@/lib/supabase'
+import { createExternalInspection } from '@/hooks/useExternalInspectionsData'
+import { useShips, shipOptions, findShipById } from '@/hooks/useShips'
 import type { ExternalInspectionType } from '@/types'
 import { getExternalInspectionTypeLabel } from '@/utils'
 import { cn } from '@/lib/utils'
@@ -70,11 +72,19 @@ interface ObservationEntry {
 
 export default function CreateExternalInspectionPage() {
   const navigate = useNavigate()
-  const { success } = useToast()
+  const { user } = useAuthStore()
+  const { success, error } = useToast()
+
+  const [shippingBuId, setShippingBuId] = useState('')
+  useEffect(() => {
+    supabase.from('business_units').select('id').eq('code', 'SHP').single().then(({ data }) => {
+      const bu = data as { id: string } | null
+      if (bu) setShippingBuId(bu.id)
+    })
+  }, [])
 
   const [selectedType, setSelectedType] = useState<ExternalInspectionType | null>(null)
   const [form, setForm] = useState({
-    business_unit_id: '',
     vessel_id: '',
     inspection_date: new Date().toISOString().slice(0, 10),
     inspecting_body: '',
@@ -120,14 +130,61 @@ export default function CreateExternalInspectionPage() {
 
   async function handleSubmit(e: FormEvent, isDraft: boolean) {
     e.preventDefault()
+    if (!form.vessel_id || !form.inspection_date || !form.inspecting_body) {
+      error('Data Tidak Lengkap', 'Kapal, tanggal, dan lembaga inspeksi wajib diisi.')
+      return
+    }
+    if (!user || !selectedType) return
+
     setSubmitting(true)
-    await new Promise(r => setTimeout(r, 900))
+
+    const buId = shippingBuId
+    const findings = observations.filter(o => o.description).map(o => ({
+      internal_inspection_id: null as null,
+      external_inspection_id: null as null,
+      area: 'Observasi',
+      description: o.description + (o.action_required ? ` | Tindakan: ${o.action_required}` : ''),
+      priority: o.level === 'CRITICAL' ? 'CRITICAL' as const : o.level === 'MAJOR' ? 'HIGH' as const : 'MEDIUM' as const,
+      status: 'OPEN' as const,
+      assigned_to: undefined,
+      target_close_date: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+      initial_photos: [] as string[],
+      closing_evidence: [] as string[],
+    }))
+
+    const res = await createExternalInspection({
+      vessel_id: form.vessel_id,
+      vessel_name: findShipById(ships, form.vessel_id)?.name,
+      business_unit_id: buId,
+      inspection_type: selectedType,
+      inspection_date: form.inspection_date,
+      inspecting_body: form.inspecting_body,
+      lead_inspector: form.lead_inspector || undefined,
+      port: form.port || undefined,
+      status: isDraft ? 'SCHEDULED' : form.status,
+      result: form.result || undefined,
+      total_observations: observations.length,
+      critical_observations: criticalCount,
+      major_observations: majorCount,
+      minor_observations: minorCount,
+      validity_date: form.validity_date || undefined,
+      next_inspection_date: form.next_inspection_date || undefined,
+      report_no: form.report_no || undefined,
+      notes: form.notes || undefined,
+      actions_taken: form.actions_taken || undefined,
+      created_by: user.id,
+      findings,
+    })
+
     setSubmitting(false)
+
+    if (res.error) { error('Gagal menyimpan', res.error); return }
+
     success(
       isDraft ? 'Inspeksi Disimpan sebagai Draft' : 'Laporan Inspeksi Disubmit',
       isDraft ? 'Anda dapat melanjutkan pengisian kapan saja.' : 'Laporan berhasil disimpan ke sistem.'
     )
-    navigate('/inspections/external')
+    navigate(`/inspections/external/${res.id}`)
   }
 
   return (
@@ -183,13 +240,6 @@ export default function CreateExternalInspectionPage() {
           <Card className="mb-4">
             <CardContent className="p-6 flex flex-col gap-4">
               <h3 className="text-sm font-semibold text-[#1B3A6B] border-b pb-2.5">Informasi Kapal & Inspeksi</h3>
-
-              <Select searchable
-                label="Unit Bisnis" required value={form.business_unit_id}
-                onChange={e => { set('business_unit_id', e.target.value); set('vessel_id', '') }}
-                placeholder="Pilih Unit Bisnis"
-                options={mockBusinessUnits.map(bu => ({ value: bu.id, label: `${bu.code} – ${bu.name}` }))}
-              />
 
               <Select searchable
                 label="Kapal" required value={form.vessel_id}

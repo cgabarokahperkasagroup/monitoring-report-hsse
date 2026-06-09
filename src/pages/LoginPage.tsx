@@ -3,18 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { Eye, EyeOff, AlertCircle, CheckSquare, Square } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 
-const DEMO_ACCOUNTS = [
-  { email: 'superadmin@barokah.co.id', role: 'Super Admin' },
-  { email: 'direktur@barokah.co.id',   role: 'Direksi / Management' },
-  { email: 'admin@barokah.co.id',      role: 'Admin' },
-  { email: 'head.hsse@barokah.co.id',  role: 'Head HSSE Corporate' },
-  { email: 'hse1@barokah.co.id',       role: 'Staff HSSE' },
-  { email: 'ophead1@barokah.co.id',    role: 'Operation Head' },
-  { email: 'sitemgr@barokah.co.id',    role: 'Site Manager' },
-  { email: 'pic1@barokah.co.id',       role: 'PIC' },
-  { email: 'viewer@barokah.co.id',     role: 'Viewer' },
-]
-
 // ─── Decorative dashboard mockup shown on the right panel ────────────────────
 
 function DashboardMockup() {
@@ -193,7 +181,7 @@ export default function LoginPage() {
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="email@barokah.co.id"
+                placeholder="email@barokahperkasagroup.com"
                 className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-gray-200 bg-gray-50 focus:bg-white focus:border-[#1B3A6B] focus:ring-2 focus:ring-[#1B3A6B]/15 outline-none transition-all placeholder:text-gray-400"
               />
             </div>
@@ -256,26 +244,6 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Demo accounts */}
-          <div className="mt-8">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="flex-1 h-px bg-gray-200" />
-              <span className="text-xs text-gray-400 shrink-0">Demo Akun (password: admin123)</span>
-              <div className="flex-1 h-px bg-gray-200" />
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              {DEMO_ACCOUNTS.map(acc => (
-                <button
-                  key={acc.email}
-                  onClick={() => { setEmail(acc.email); setPassword('admin123') }}
-                  className="text-left px-3 py-2 rounded-xl bg-gray-50 border border-gray-200 hover:border-[#1B3A6B]/40 hover:bg-blue-50 transition-all group"
-                >
-                  <p className="text-xs font-semibold text-[#1B3A6B] leading-tight">{acc.role}</p>
-                  <p className="text-[10px] text-gray-400 truncate mt-0.5">{acc.email.split('@')[0]}</p>
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
 
         {/* Footer */}
@@ -316,20 +284,6 @@ export default function LoginPage() {
           <div className="w-full transform rotate-0 transition-transform">
             <DashboardMockup />
           </div>
-        </div>
-
-        {/* Stats row at bottom */}
-        <div className="relative grid grid-cols-3 gap-4">
-          {[
-            { label: 'Unit Bisnis',     value: '8' },
-            { label: 'Armada Kapal',    value: '3+' },
-            { label: 'Jenis Inspeksi',  value: '5' },
-          ].map(s => (
-            <div key={s.label} className="rounded-xl p-4 text-center" style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}>
-              <p className="text-xl font-bold" style={{ color: '#C8922A' }}>{s.value}</p>
-              <p className="text-blue-200 text-xs mt-0.5">{s.label}</p>
-            </div>
-          ))}
         </div>
       </div>
     </div>

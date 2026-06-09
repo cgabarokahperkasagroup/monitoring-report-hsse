@@ -3,7 +3,7 @@ import { Bell, AlertCircle, CheckCircle2, Info, AlertTriangle, Settings, LogOut,
 import { Sidebar } from './Sidebar'
 import { Breadcrumb } from '@/components/ui/breadcrumb'
 import { useAuthStore } from '@/stores/authStore'
-import { mockNotifications } from '@/data/mockData'
+import { useNotificationsData } from '@/hooks/useNotificationsData'
 import { useRef, useState, useEffect } from 'react'
 import { formatDateTime, getRoleLabel } from '@/utils'
 
@@ -211,9 +211,9 @@ function NotificationBell() {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
-  const userNotifs = mockNotifications.filter(n => n.user_id === user?.id)
-  const unread = userNotifs.filter(n => !n.is_read).length
-  const recent = userNotifs.slice(0, 5)
+  const { notifications, unreadCount, markAsRead, markAllRead } = useNotificationsData(user?.id)
+  const unread = unreadCount
+  const recent = notifications.slice(0, 5)
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -279,7 +279,7 @@ function NotificationBell() {
           </div>
 
           <div className="flex items-center justify-between px-4 py-2.5 border-t border-gray-100 bg-gray-50">
-            <button className="text-xs text-gray-500 hover:text-gray-700">Tandai Semua Dibaca</button>
+            <button className="text-xs text-gray-500 hover:text-gray-700" onClick={markAllRead}>Tandai Semua Dibaca</button>
             <Link
               to="/notifications"
               onClick={() => setOpen(false)}
@@ -312,8 +312,7 @@ function UserMenu() {
 
   const handleLogout = () => {
     setOpen(false)
-    logout()
-    navigate('/login')
+    logout().then(() => navigate('/login'))
   }
 
   return (

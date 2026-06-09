@@ -3,9 +3,8 @@ import {
   ArrowLeft, Shield, Calendar, User, Ship, CheckCircle2,
   AlertTriangle, AlertCircle, Clock, FileText
 } from 'lucide-react'
-import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { mockExternalInspections } from '@/data/mockData'
+import { useExternalInspection } from '@/hooks/useExternalInspectionsData'
 import {
   formatDateShort, getInspectionResultLabel, getInspectionResultColor,
   getExternalInspectionTypeLabel, getExternalInspectionTypeColor
@@ -37,7 +36,16 @@ export default function ExternalInspectionDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const [insp] = useState(() => mockExternalInspections.find(i => i.id === id))
+  const {
+    inspection: insp, loading,
+    addFindingProgress, submitFindingClosing, approveFindingClosing, rejectFindingClosing,
+  } = useExternalInspection(id)
+
+  if (loading) return (
+    <div className="flex items-center justify-center h-64">
+      <div className="w-8 h-8 border-4 border-[#1B3A6B] border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
 
   if (!insp) {
     return (
@@ -283,6 +291,12 @@ export default function ExternalInspectionDetailPage() {
       <InspectionFindingsSection
         initialFindings={insp.findings ?? []}
         canAdd={!!(user && ['SUPER_ADMIN', 'ADMIN', 'MANAGEMENT', 'OP_HEAD'].includes(user.role) && insp.status !== 'CANCELLED')}
+        findingOps={{
+          addProgress: (fId, data) => addFindingProgress(fId, data),
+          submitClosing: (fId, data) => submitFindingClosing(fId, data),
+          approveClosing: (fId) => approveFindingClosing(fId),
+          rejectClosing: (fId, notes) => rejectFindingClosing(fId, notes),
+        }}
       />
     </div>
   )

@@ -7,6 +7,7 @@ import { Input, Textarea, Select } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { useAuthStore } from '@/stores/authStore'
 import { useShips, getFleetOptions, shipOptions, findShipById } from '@/hooks/useShips'
+import { useVisitSchedulesData } from '@/hooks/useVisitSchedulesData'
 
 const MONTH_NAMES = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
@@ -47,6 +48,7 @@ export default function CreateVisitPlanPage() {
   const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }))
 
   const { ships } = useShips()
+  const { createSchedule } = useVisitSchedulesData()
   const fleetOpts = getFleetOptions(ships)
   const filteredVessels = form.fleet_id ? shipOptions(ships, form.fleet_id) : []
 
@@ -62,8 +64,20 @@ export default function CreateVisitPlanPage() {
     if (!form.scheduled_date) { error('Data Tidak Lengkap', 'Tanggal rencana kunjungan harus diisi.'); return }
 
     setSubmitting(true)
-    await new Promise(r => setTimeout(r, 800))
+    const result = await createSchedule({
+      vessel_id: form.vessel_id,
+      vessel_name: selectedShip?.name,
+      fleet_id: form.fleet_id,
+      fleet_name: selectedShip?.fleet?.name ?? selectedFleetName,
+      scheduled_date: form.scheduled_date,
+      period_month: Number(form.period_month),
+      period_year: Number(form.period_year),
+      notes: form.notes || undefined,
+      created_by: user!.id,
+    })
     setSubmitting(false)
+
+    if (result?.error) { error('Gagal Membuat Rencana', result.error); return }
 
     const month = MONTH_NAMES[Number(form.period_month) - 1]
     success(

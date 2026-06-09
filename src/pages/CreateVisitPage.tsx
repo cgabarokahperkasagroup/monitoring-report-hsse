@@ -1,14 +1,15 @@
-import { useState, FormEvent } from 'react'
+import { useState, useEffect, useMemo, FormEvent } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { ArrowLeft, Ship, MapPin, Crown, Info } from 'lucide-react'
+import { ArrowLeft, Ship, MapPin, Crown, Info, CalendarCheck } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input, Textarea, Select } from '@/components/ui/input'
 import { FileUpload } from '@/components/ui/file-upload'
 import { useToast } from '@/components/ui/toast'
 import { useAuthStore } from '@/stores/authStore'
-import { mockBusinessUnits, mockSites } from '@/data/mockData'
-import { useShips, shipOptions } from '@/hooks/useShips'
+import { supabase } from '@/lib/supabase'
+import { createVisit } from '@/hooks/useVisitsData'
+import { useShips, shipOptions, findShipById } from '@/hooks/useShips'
 import { cn } from '@/lib/utils'
 import type { VisitType } from '@/types'
 
@@ -37,29 +38,50 @@ export default function CreateVisitPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { user } = useAuthStore()
-  const { success } = useToast()
+  const { success, error } = useToast()
 
-  const preselectedType = (location.state as { preselectedType?: VisitType } | null)?.preselectedType ?? null
-  const preselectedVesselId = (location.state as { vessel_id?: string } | null)?.vessel_id ?? ''
+  const locationState = location.state as { preselectedType?: VisitType; vessel_id?: string; schedule_id?: string; vessel_name?: string } | null
+  const preselectedType = locationState?.preselectedType ?? null
+  const preselectedVesselId = locationState?.vessel_id ?? ''
+  const scheduleId = locationState?.schedule_id ?? null
+  const scheduleVesselName = locationState?.vessel_name ?? ''
 
-  const SHIPPING_BU_ID = 'bu-1'
+  const [businessUnits, setBusinessUnits] = useState<{ id: string; code: string; name: string }[]>([])
+  const [sites, setSites] = useState<{ id: string; name: string; business_unit_id: string; site_type?: string | null }[]>([])
+
+  useEffect(() => {
+    supabase.from('business_units').select('id, code, name').order('name').then(({ data }) => {
+      if (data) setBusinessUnits(data)
+    })
+    supabase.from('sites').select('id, name, business_unit_id, site_type').order('name').then(({ data }) => {
+      if (data) setSites(data)
+    })
+  }, [])
+
+  const shippingBUID = useMemo(() => businessUnits.find(bu => bu.code === 'SHP')?.id ?? '', [businessUnits])
 
   const [selectedType, setSelectedType] = useState<VisitType | null>(preselectedType)
   const [form, setForm] = useState({
-    business_unit_id: preselectedType === 'VESSEL_VISIT' ? SHIPPING_BU_ID : '',
+    business_unit_id: '',
     vessel_id: preselectedVesselId, site_id: '',
     visit_date: '', start_time: '', end_time: '',
     participants: '', agenda: '', summary: '',
-    status: 'DRAFT'
   })
   const [submitting, setSubmitting] = useState(false)
+
+  // Once BUs load, set SHP as default for VESSEL_VISIT
+  useEffect(() => {
+    if (preselectedType === 'VESSEL_VISIT' && shippingBUID) {
+      setForm(p => ({ ...p, business_unit_id: shippingBUID }))
+    }
+  }, [shippingBUID, preselectedType])
 
   const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }))
 
   const handleSelectType = (type: VisitType) => {
     setSelectedType(type)
     if (type === 'VESSEL_VISIT') {
-      setForm(p => ({ ...p, business_unit_id: SHIPPING_BU_ID, site_id: '' }))
+      setForm(p => ({ ...p, business_unit_id: shippingBUID, site_id: '' }))
     } else {
       setForm(p => ({ ...p, business_unit_id: '', vessel_id: '', site_id: '' }))
     }
@@ -68,25 +90,74 @@ export default function CreateVisitPage() {
   const availableTypes = visitTypes.filter(vt => !user || vt.roles.includes(user.role))
   const { ships } = useShips()
   const filteredVessels = shipOptions(ships)
-  const filteredSites = form.business_unit_id ? mockSites.filter(s => s.business_unit_id === form.business_unit_id) : mockSites
+  const filteredSites = form.business_unit_id
+    ? sites.filter(s => s.business_unit_id === form.business_unit_id)
+    : sites
 
   async function handleSubmit(e: FormEvent, saveAsDraft: boolean) {
     e.preventDefault()
+    if (!user || !selectedType) return
     setSubmitting(true)
-    await new Promise(r => setTimeout(r, 800))
+
+    const buId = selectedType === 'VESSEL_VISIT' ? shippingBUID : form.business_unit_id
+    const buCode = businessUnits.find(bu => bu.id === buId)?.code ?? 'BU'
+
+    const result = await createVisit({
+      visit_type: selectedType,
+      business_unit_id: buId,
+      vessel_id: form.vessel_id || undefined,
+      vessel_name: form.vessel_id ? findShipById(ships, form.vessel_id)?.name : undefined,
+      site_id: form.site_id || undefined,
+      visit_date: form.visit_date,
+      start_time: form.start_time || undefined,
+      end_time: form.end_time || undefined,
+      participants: form.participants ? form.participants.split(',').map(s => s.trim()).filter(Boolean) : [],
+      agenda: form.agenda || undefined,
+      summary: form.summary || undefined,
+      status: saveAsDraft ? 'DRAFT' : 'APPROVED',
+      created_by: user.id,
+      bu_code: buCode,
+    })
+
     setSubmitting(false)
+
+    if (result.error) {
+      error('Gagal menyimpan kunjungan', result.error)
+      return
+    }
+
+    // Link visit to schedule if this is a realization
+    if (scheduleId && result.id) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase.from('visit_schedules') as any)
+        .update({ visit_id: result.id, status: 'COMPLETED' })
+        .eq('id', scheduleId)
+    }
+
     success(
-      saveAsDraft ? 'Kunjungan disimpan sebagai Draft' : 'Kunjungan disubmit',
-      saveAsDraft ? 'Anda dapat melanjutkan mengisi kapan saja' : 'Atasan akan menerima notifikasi untuk review'
+      saveAsDraft ? 'Kunjungan disimpan sebagai Draft' : 'Kunjungan dimulai',
+      saveAsDraft ? 'Anda dapat melanjutkan mengisi kapan saja' : 'Temuan dapat langsung ditambahkan. Submit laporan akhir setelah kunjungan selesai.'
     )
-    navigate('/visits')
+    navigate(`/visits/${result.id}`)
   }
 
   return (
     <div className="max-w-3xl flex flex-col gap-5">
-      <Button variant="ghost" size="sm" onClick={() => navigate('/visits')} className="w-fit">
+      <Button variant="ghost" size="sm" onClick={() => navigate(scheduleId ? '/vessel-compliance' : '/visits')} className="w-fit">
         <ArrowLeft size={16} /> Kembali
       </Button>
+
+      {scheduleId && (
+        <div className="flex items-start gap-2.5 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-800">
+          <CalendarCheck size={16} className="shrink-0 mt-0.5 text-blue-500" />
+          <div>
+            <p className="font-semibold">Realisasi Rencana Kunjungan</p>
+            {scheduleVesselName && (
+              <p className="text-xs text-blue-600 mt-0.5">Kapal: <strong>{scheduleVesselName}</strong> — kunjungan ini akan menyelesaikan rencana jadwal secara otomatis.</p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Step 1: Choose visit type */}
       {!selectedType && (
@@ -144,7 +215,7 @@ export default function CreateVisitPage() {
                   label="Unit Bisnis" required value={form.business_unit_id}
                   onChange={e => { set('business_unit_id', e.target.value); set('vessel_id', ''); set('site_id', '') }}
                   placeholder="Pilih Unit Bisnis"
-                  options={mockBusinessUnits.map(bu => ({ value: bu.id, label: `${bu.code} – ${bu.name}` }))}
+                  options={businessUnits.map(bu => ({ value: bu.id, label: `${bu.code} – ${bu.name}` }))}
                 />
               )}
 
@@ -204,7 +275,7 @@ export default function CreateVisitPage() {
               Simpan sebagai Draft
             </Button>
             <Button type="button" onClick={e => handleSubmit(e, false)} loading={submitting}>
-              Submit untuk Approval
+              Mulai Kunjungan
             </Button>
           </div>
         </form>

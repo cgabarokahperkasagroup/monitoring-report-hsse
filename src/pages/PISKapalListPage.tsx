@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip,
@@ -8,8 +8,8 @@ import {
   Ship, CheckCircle2, AlertCircle, Clock, XCircle, ChevronUp, ChevronDown,
   Plus, Search, Filter, FileText, Edit,
 } from 'lucide-react'
-import { usePISKapalStore, getPISStatusLabel, getPISStatusColor, getPISTemuanLabel, getPISTemuanColor, getPISPerusahaanColor } from '@/stores/pisKapalStore'
-import { mockPISPerusahaan, mockPISTemuanTypes, mockPISKategori } from '@/data/mockData'
+import { usePISFindingsData, getPISStatusLabel, getPISStatusColor, getPISTemuanLabel, getPISTemuanColor, getPISPerusahaanColor } from '@/hooks/usePISFindingsData'
+import { supabase } from '@/lib/supabase'
 import { PIS_FINDING_STATUS_OPTIONS } from '@/data/masterOptions'
 import { formatDateShort } from '@/utils'
 import type { PISFindingStatus, PISPerusahaan } from '@/types'
@@ -58,7 +58,19 @@ const STATUS_COLORS: Record<PISFindingStatus, string> = {
 
 export default function PISKapalListPage() {
   const navigate = useNavigate()
-  const { findings } = usePISKapalStore()
+  const { findings } = usePISFindingsData()
+
+  const [pisPerusahaan, setPisPerusahaan] = useState<Array<{id: string, code: string}>>([])
+  const [pisTemuanTypes, setPisTemuanTypes] = useState<Array<{id: string, code: string, label: string}>>([])
+  const [pisKategori, setPisKategori] = useState<Array<{id: string, name: string}>>([])
+  useEffect(() => {
+    supabase.from('pis_perusahaan').select('id, code').eq('is_active', true)
+      .then(({ data }) => { if (data) setPisPerusahaan(data as Array<{id: string, code: string}>) })
+    supabase.from('pis_finding_types').select('id, code, label').eq('is_active', true)
+      .then(({ data }) => { if (data) setPisTemuanTypes(data as Array<{id: string, code: string, label: string}>) })
+    supabase.from('pis_categories').select('id, name').eq('is_active', true)
+      .then(({ data }) => { if (data) setPisKategori(data as Array<{id: string, name: string}>) })
+  }, [])
 
   // ── Filters ────────────────────────────────────────────────────────────────
   const [search, setSearch] = useState('')
@@ -320,7 +332,7 @@ export default function PISKapalListPage() {
 
               <select value={filterPerusahaan} onChange={e => { setFilterPerusahaan(e.target.value as PISPerusahaan | ''); setPage(1) }} className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none">
                 <option value="">Semua Perusahaan</option>
-                {mockPISPerusahaan.filter(p => p.is_active).map(p => <option key={p.id} value={p.kode}>{p.kode}</option>)}
+                {pisPerusahaan.map(p => <option key={p.id} value={p.code}>{p.code}</option>)}
               </select>
 
               <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value as PISFindingStatus | ''); setPage(1) }} className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none">
@@ -330,12 +342,12 @@ export default function PISKapalListPage() {
 
               <select value={filterCategory} onChange={e => { setFilterCategory(e.target.value); setPage(1) }} className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none">
                 <option value="">Semua Kategori</option>
-                {mockPISKategori.filter(k => k.is_active).map(k => <option key={k.id} value={k.nama}>{k.nama}</option>)}
+                {pisKategori.map(k => <option key={k.id} value={k.name}>{k.name}</option>)}
               </select>
 
               <select value={filterTemuan} onChange={e => { setFilterTemuan(e.target.value); setPage(1) }} className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none">
                 <option value="">Semua Temuan</option>
-                {mockPISTemuanTypes.filter(t => t.is_active).map(t => <option key={t.id} value={t.value}>{t.label}</option>)}
+                {pisTemuanTypes.map(t => <option key={t.id} value={t.code}>{t.label}</option>)}
               </select>
 
               <select value={filterYear} onChange={e => { setFilterYear(e.target.value); setPage(1) }} className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none">

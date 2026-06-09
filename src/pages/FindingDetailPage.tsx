@@ -1,20 +1,21 @@
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Star, Plus, Send, CheckCircle, XCircle, AlertTriangle, Clock, User, Calendar, Building2, ImageIcon, ChevronDown, ChevronUp } from 'lucide-react'
+import { ArrowLeft, Star, Plus, Send, CheckCircle, XCircle, AlertTriangle, Clock, User, Calendar, Building2, ImageIcon, ChevronDown, ChevronUp, Camera } from 'lucide-react'
 import { FileUpload } from '@/components/ui/file-upload'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Modal } from '@/components/ui/modal'
 import { Input, Textarea, Select } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
-import { mockFindings } from '@/data/mockData'
+import { useFinding } from '@/hooks/useFindingsData'
 import { useAuthStore } from '@/stores/authStore'
+import { uploadPhotos } from '@/lib/supabase'
 import {
   getPriorityColor, getPriorityLabel, getStatusColor, getStatusLabel,
   getActionTypeLabel, getActionTypeColor, formatDate, formatDateTime
 } from '@/utils'
-import type { FindingPriority, ActionType } from '@/types'
+import type { FindingPriority, ActionType, FindingProgressEntry } from '@/types'
 import { cn } from '@/lib/utils'
 
 const actionTypeOptions = [
@@ -34,12 +35,21 @@ export default function FindingDetailPage() {
   const { success, error: showError } = useToast()
   const [timelineOrder, setTimelineOrder] = useState<'newest' | 'oldest'>('newest')
   const [showAddProgress, setShowAddProgress] = useState(false)
-  const [showClosingForm, setShowClosingForm] = useState(false)
+  const [addProgressWithClosing, setAddProgressWithClosing] = useState(false)
+  const [showClosingOnly, setShowClosingOnly] = useState(false)
   const [showReviewModal, setShowReviewModal] = useState(false)
+  const [showInitialPhotoModal, setShowInitialPhotoModal] = useState(false)
   const [reviewDecision, setReviewDecision] = useState<'APPROVED' | 'REJECTED' | null>(null)
   const [rejectionNotes, setRejectionNotes] = useState('')
+  const [lightbox, setLightbox] = useState<{ photos: string[]; index: number } | null>(null)
 
-  const [finding, setFinding] = useState(() => mockFindings.find(f => f.id === id))
+  const { finding, loading, addProgress, submitClosing, approveClosing, rejectClosing, updateInitialPhotos } = useFinding(id)
+
+  if (loading) return (
+    <div className="flex items-center justify-center h-64">
+      <div className="w-8 h-8 border-4 border-[#1B3A6B] border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
 
   if (!finding) return (
     <div className="flex flex-col items-center justify-center h-64 gap-3">
@@ -51,7 +61,8 @@ export default function FindingDetailPage() {
 
   const canAddProgress = user && ['SUPER_ADMIN', 'ADMIN', 'MANAGEMENT', 'OP_HEAD', 'SITE_MGR', 'PIC', 'STAFF_HSSE'].includes(user.role)
     && ['OPEN', 'IN_PROGRESS', 'OVERDUE'].includes(finding.status)
-  const canSubmitClosing = canAddProgress && (finding.progress_entries?.length ?? 0) > 0
+  const canUploadInitialPhoto = canAddProgress
+  const canSubmitClosing = canAddProgress
   const canReview = user && ['SUPER_ADMIN', 'MANAGEMENT', 'OP_HEAD', 'SITE_MGR', 'ADMIN', 'HEAD_HSSE'].includes(user.role)
     && finding.status === 'PENDING_APPROVAL'
 
@@ -78,13 +89,25 @@ export default function FindingDetailPage() {
               </Button>
             </>
           )}
+          {canUploadInitialPhoto && (
+            <Button variant="outline" size="sm" onClick={() => setShowInitialPhotoModal(true)}>
+              <Camera size={15} /> Foto Kondisi Awal
+            </Button>
+          )}
           {canAddProgress && (
             <Button variant="outline" size="sm" onClick={() => setShowAddProgress(true)}>
               <Plus size={15} /> Tambah Progress
             </Button>
           )}
           {canSubmitClosing && finding.status !== 'PENDING_APPROVAL' && (
-            <Button size="sm" onClick={() => setShowClosingForm(true)}>
+            <Button size="sm" onClick={() => {
+              if (progressEntries.length > 0) {
+                setShowClosingOnly(true)
+              } else {
+                setAddProgressWithClosing(true)
+                setShowAddProgress(true)
+              }
+            }}>
               <Send size={15} /> Ajukan Closing
             </Button>
           )}
@@ -174,23 +197,50 @@ export default function FindingDetailPage() {
             <p className="text-sm text-gray-700 leading-relaxed">{finding.description}</p>
           </div>
 
-          {finding.initial_photos && finding.initial_photos.length > 0 && (
-            <div className="mt-4">
-              <p className="text-xs text-gray-500 mb-2 flex items-center gap-1"><ImageIcon size={12} />Foto Kondisi Awal</p>
+          <div className="mt-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs text-gray-500 flex items-center gap-1"><ImageIcon size={12} />Foto Kondisi Awal</p>
+              {canUploadInitialPhoto && (
+                <button
+                  onClick={() => setShowInitialPhotoModal(true)}
+                  className="text-xs text-[#1B3A6B] hover:underline flex items-center gap-1"
+                >
+                  <Camera size={11} /> Tambah Foto
+                </button>
+              )}
+            </div>
+            {finding.initial_photos && finding.initial_photos.length > 0 ? (
               <div className="flex gap-2 flex-wrap">
                 {finding.initial_photos.map((photo, i) => (
-                  <img key={i} src={photo} alt={`Foto ${i + 1}`} className="w-24 h-20 object-cover rounded-lg border border-gray-200 cursor-pointer hover:opacity-90" />
+                  <img
+                    key={i}
+                    src={photo}
+                    alt={`Foto ${i + 1}`}
+                    className="w-24 h-20 object-cover rounded-lg border border-gray-200 cursor-pointer hover:opacity-90"
+                    onClick={() => setLightbox({ photos: finding.initial_photos!, index: i })}
+                  />
                 ))}
               </div>
-            </div>
-          )}
+            ) : (
+              <div
+                className={`flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 border-dashed ${canUploadInitialPhoto ? 'border-gray-300 cursor-pointer hover:border-[#1B3A6B]/50 hover:bg-[#1B3A6B]/5' : 'border-gray-200 bg-gray-50'}`}
+                onClick={() => canUploadInitialPhoto && setShowInitialPhotoModal(true)}
+              >
+                <Camera size={20} className="text-gray-300" />
+                <p className="text-xs text-gray-400">
+                  {canUploadInitialPhoto ? 'Klik untuk unggah foto kondisi awal temuan' : 'Belum ada foto kondisi awal'}
+                </p>
+              </div>
+            )}
+          </div>
 
           {finding.status === 'CLOSED' && finding.closing_evidence && (
             <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
               <p className="text-xs font-semibold text-green-700 mb-2 flex items-center gap-1.5"><CheckCircle size={13} />Evidence Closing</p>
               <div className="flex gap-2 flex-wrap">
                 {finding.closing_evidence.map((photo, i) => (
-                  <img key={i} src={photo} alt={`Evidence ${i + 1}`} className="w-24 h-20 object-cover rounded-lg border border-green-200 cursor-pointer hover:opacity-90" />
+                  <img key={i} src={photo} alt={`Evidence ${i + 1}`} className="w-24 h-20 object-cover rounded-lg border border-green-200 cursor-pointer hover:opacity-90"
+                    onClick={() => setLightbox({ photos: finding.closing_evidence!, index: i })} />
                 ))}
               </div>
               {finding.closing_notes && <p className="text-xs text-green-700 mt-2">{finding.closing_notes}</p>}
@@ -233,7 +283,8 @@ export default function FindingDetailPage() {
               <p className="text-xs text-gray-500 mb-2 flex items-center gap-1"><ImageIcon size={12} />Evidence Penutupan</p>
               <div className="flex gap-2 flex-wrap">
                 {finding.closing_request.evidence_photos.map((photo, i) => (
-                  <img key={i} src={photo} alt={`Evidence ${i + 1}`} className="w-28 h-22 object-cover rounded-lg border border-gray-200 cursor-pointer hover:opacity-90" />
+                  <img key={i} src={photo} alt={`Evidence ${i + 1}`} className="w-28 h-22 object-cover rounded-lg border border-gray-200 cursor-pointer hover:opacity-90"
+                    onClick={() => setLightbox({ photos: finding.closing_request!.evidence_photos, index: i })} />
                 ))}
               </div>
             </div>
@@ -298,7 +349,8 @@ export default function FindingDetailPage() {
                   {entry.photos && entry.photos.length > 0 && (
                     <div className="flex gap-2 mt-2">
                       {entry.photos.map((p, pi) => (
-                        <img key={pi} src={p} alt="" className="w-20 h-16 object-cover rounded-lg border border-gray-200 cursor-pointer" />
+                        <img key={pi} src={p} alt="" className="w-20 h-16 object-cover rounded-lg border border-gray-200 cursor-pointer hover:opacity-90"
+                          onClick={() => setLightbox({ photos: entry.photos!, index: pi })} />
                       ))}
                     </div>
                   )}
@@ -350,51 +402,103 @@ export default function FindingDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Add Progress Modal */}
-      <AddProgressModal open={showAddProgress} onClose={() => setShowAddProgress(false)}
-        onSave={(data) => {
-          const newEntry = {
-            id: `prog-${Date.now()}`,
-            finding_id: finding.id,
-            action_date: data.action_date || new Date().toISOString().split('T')[0],
-            action_type: data.action_type as import('@/types').ActionType,
-            description: data.description,
-            next_steps: data.next_steps || undefined,
-            next_action_date: data.next_action_date || undefined,
-            created_by: user?.id ?? '',
-            created_by_user: user ?? undefined,
-            created_at: new Date().toISOString(),
-          }
-          setFinding(f => f ? {
-            ...f,
-            status: f.status === 'OPEN' || f.status === 'OVERDUE' ? 'IN_PROGRESS' : f.status,
-            progress_entries: [...(f.progress_entries ?? []), newEntry],
-          } : f)
-          setShowAddProgress(false)
-          success('Progress ditambahkan', 'Status temuan diperbarui menjadi In Progress')
+      {/* Initial Photo Upload Modal */}
+      <InitialPhotoModal
+        open={showInitialPhotoModal}
+        onClose={() => setShowInitialPhotoModal(false)}
+        onSave={async (files) => {
+          const { urls, error: upErr } = await uploadPhotos('finding-photos', `findings/${id}/initial`, files)
+          if (upErr) { showError('Gagal mengunggah', upErr); return }
+          const result = await updateInitialPhotos(urls)
+          if (result?.error) { showError('Gagal menyimpan', result.error); return }
+          setShowInitialPhotoModal(false)
+          success('Foto diunggah', `${urls.length} foto kondisi awal berhasil disimpan`)
         }}
       />
 
-      {/* Closing Form Modal */}
-      <ClosingFormModal open={showClosingForm} onClose={() => setShowClosingForm(false)}
+      {/* Add Progress Modal */}
+      <AddProgressModal open={showAddProgress} onClose={() => { setShowAddProgress(false); setAddProgressWithClosing(false) }}
         isOverdue={finding.status === 'OVERDUE'}
-        onSave={(data) => {
-          const closingRequest = {
-            id: `close-req-${Date.now()}`,
-            finding_id: finding.id,
-            action_date: data.action_date || new Date().toISOString().split('T')[0],
-            summary: data.summary,
-            condition_after: data.condition_after,
-            evidence_photos: [],
-            submitted_by: user?.id ?? '',
-            submitted_by_user: user ?? undefined,
-            submitted_at: new Date().toISOString(),
+        initialWithClosing={addProgressWithClosing}
+        onSave={async (data) => {
+          let photoUrls: string[] = []
+          if (data.photos.length > 0) {
+            const { urls, error: upErr } = await uploadPhotos('finding-photos', `findings/${id}/progress`, data.photos)
+            if (upErr) { showError('Gagal mengunggah foto', upErr); return }
+            photoUrls = urls
           }
-          setFinding(f => f ? { ...f, status: 'PENDING_APPROVAL', closing_request: closingRequest } : f)
-          setShowClosingForm(false)
+          const progressResult = await addProgress({
+            action_date: data.action_date || new Date().toISOString().split('T')[0],
+            action_type: data.action_type,
+            description: data.description,
+            photos: photoUrls,
+            next_steps: data.next_steps || undefined,
+            next_action_date: data.next_action_date || undefined,
+            created_by: user?.id ?? '',
+          })
+          if (progressResult?.error) { showError('Gagal menyimpan progress', progressResult.error); return }
+
+          if (data.closing) {
+            let evidenceUrls: string[] = []
+            if (data.closing.evidenceFiles.length > 0) {
+              const { urls, error: upErr } = await uploadPhotos('finding-photos', `findings/${id}/closing`, data.closing.evidenceFiles)
+              if (upErr) { showError('Gagal mengunggah foto closing', upErr); return }
+              evidenceUrls = urls
+            }
+            const closingResult = await submitClosing({
+              action_date: data.closing.closing_date || new Date().toISOString().split('T')[0],
+              summary: data.closing.summary,
+              condition_after: data.closing.condition_after,
+              evidence_photos: evidenceUrls,
+              submitted_by: user?.id ?? '',
+            })
+            if (closingResult?.error) { showError('Gagal mengajukan closing', closingResult.error); return }
+            setShowAddProgress(false)
+            setAddProgressWithClosing(false)
+            success('Closing diajukan', 'Progress tersimpan dan atasan akan menerima notifikasi untuk mereview')
+          } else {
+            setShowAddProgress(false)
+            setAddProgressWithClosing(false)
+            success('Progress ditambahkan', 'Status temuan diperbarui menjadi In Progress')
+          }
+        }}
+      />
+
+      {/* Closing Only Modal (pakai data progress terakhir) */}
+      <ClosingOnlyModal
+        open={showClosingOnly}
+        onClose={() => setShowClosingOnly(false)}
+        lastEntry={progressEntries[progressEntries.length - 1]}
+        isOverdue={finding.status === 'OVERDUE'}
+        onSave={async ({ condition_after, evidenceFiles }) => {
+          let evidenceUrls: string[] = []
+          if (evidenceFiles.length > 0) {
+            const { urls, error: upErr } = await uploadPhotos('finding-photos', `findings/${id}/closing`, evidenceFiles)
+            if (upErr) { showError('Gagal mengunggah foto closing', upErr); return }
+            evidenceUrls = urls
+          }
+          const last = progressEntries[progressEntries.length - 1]
+          const closingResult = await submitClosing({
+            action_date: last.action_date,
+            summary: last.description,
+            condition_after,
+            evidence_photos: evidenceUrls,
+            submitted_by: user?.id ?? '',
+          })
+          if (closingResult?.error) { showError('Gagal mengajukan closing', closingResult.error); return }
+          setShowClosingOnly(false)
           success('Closing diajukan', 'Atasan akan menerima notifikasi untuk mereview')
         }}
       />
+
+      {/* Photo Lightbox */}
+      {lightbox && (
+        <PhotoLightbox
+          photos={lightbox.photos}
+          index={lightbox.index}
+          onClose={() => setLightbox(null)}
+        />
+      )}
 
       {/* Review Closing Modal */}
       <Modal open={showReviewModal} onClose={() => setShowReviewModal(false)}
@@ -403,37 +507,13 @@ export default function FindingDetailPage() {
         footer={<>
           <Button variant="ghost" onClick={() => setShowReviewModal(false)}>Batal</Button>
           <Button variant={reviewDecision === 'APPROVED' ? 'primary' : 'danger'}
-            onClick={() => {
+            onClick={async () => {
               if (reviewDecision === 'APPROVED') {
-                setFinding(f => f ? {
-                  ...f,
-                  status: 'CLOSED',
-                  closed_at: new Date().toISOString(),
-                  closed_by: user?.id,
-                  closed_by_user: user ?? undefined,
-                  closing_request: f.closing_request ? {
-                    ...f.closing_request,
-                    review_decision: 'APPROVED',
-                    reviewed_by: user?.id,
-                    reviewed_by_user: user ?? undefined,
-                    reviewed_at: new Date().toISOString(),
-                  } : f.closing_request,
-                } : f)
-                success('Closing disetujui', 'Temuan ditutup secara resmi')
+                const result = await approveClosing(user?.id ?? '')
+                if (!result?.error) success('Closing disetujui', 'Temuan ditutup secara resmi')
               } else {
-                setFinding(f => f ? {
-                  ...f,
-                  status: 'IN_PROGRESS',
-                  closing_request: f.closing_request ? {
-                    ...f.closing_request,
-                    review_decision: 'REJECTED',
-                    rejection_notes: rejectionNotes,
-                    reviewed_by: user?.id,
-                    reviewed_by_user: user ?? undefined,
-                    reviewed_at: new Date().toISOString(),
-                  } : f.closing_request,
-                } : f)
-                showError('Closing ditolak', 'PIC dapat melanjutkan menambah progress')
+                const result = await rejectClosing(user?.id ?? '', rejectionNotes)
+                if (!result?.error) showError('Closing ditolak', 'PIC dapat melanjutkan menambah progress')
               }
               setShowReviewModal(false)
               setRejectionNotes('')
@@ -451,6 +531,68 @@ export default function FindingDetailPage() {
           <p className="text-sm text-gray-600">Anda telah mereview seluruh timeline progress dan evidence closing. Setujui penutupan temuan ini?</p>
         )}
       </Modal>
+    </div>
+  )
+}
+
+function PhotoLightbox({ photos, index: initialIndex, onClose }: {
+  photos: string[]
+  index: number
+  onClose: () => void
+}) {
+  const [index, setIndex] = useState(initialIndex)
+  const prev = () => setIndex(i => (i - 1 + photos.length) % photos.length)
+  const next = () => setIndex(i => (i + 1) % photos.length)
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+      if (e.key === 'ArrowLeft') prev()
+      if (e.key === 'ArrowRight') next()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [photos.length])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div className="relative flex items-center gap-3 max-w-4xl w-full px-4" onClick={e => e.stopPropagation()}>
+        {photos.length > 1 && (
+          <button
+            onClick={prev}
+            className="shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white text-xl transition-colors"
+          >
+            ‹
+          </button>
+        )}
+        <div className="flex-1 flex flex-col items-center gap-3">
+          <img
+            src={photos[index]}
+            alt={`Foto ${index + 1}`}
+            className="max-h-[75vh] max-w-full rounded-xl object-contain shadow-2xl"
+          />
+          {photos.length > 1 && (
+            <p className="text-white/60 text-xs">{index + 1} / {photos.length}</p>
+          )}
+        </div>
+        {photos.length > 1 && (
+          <button
+            onClick={next}
+            className="shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white text-xl transition-colors"
+          >
+            ›
+          </button>
+        )}
+        <button
+          onClick={onClose}
+          className="absolute -top-3 -right-0 w-8 h-8 flex items-center justify-center rounded-full bg-white/20 hover:bg-white/30 text-white text-sm transition-colors"
+        >
+          ✕
+        </button>
+      </div>
     </div>
   )
 }
@@ -497,19 +639,168 @@ function TimelineNode({ type, date, badge, badgeColor, content, isLast }: {
   )
 }
 
-function AddProgressModal({ open, onClose, onSave }: {
+function InitialPhotoModal({ open, onClose, onSave }: {
   open: boolean
   onClose: () => void
-  onSave: (data: { action_date: string; action_type: string; description: string; next_steps: string; next_action_date: string }) => void
+  onSave: (files: File[]) => Promise<void>
 }) {
-  const [form, setForm] = useState({ action_date: '', action_type: '', description: '', next_steps: '', next_action_date: '' })
-  const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }))
+  const [files, setFiles] = useState<File[]>([])
+  const [uploading, setUploading] = useState(false)
+
+  const handleSave = async () => {
+    if (files.length === 0) return
+    setUploading(true)
+    await onSave(files)
+    setUploading(false)
+    setFiles([])
+  }
 
   return (
-    <Modal open={open} onClose={onClose} title="Tambah Progress Entry" size="lg"
+    <Modal open={open} onClose={onClose} title="Unggah Foto Kondisi Awal" size="md"
+      footer={<>
+        <Button variant="ghost" onClick={onClose} disabled={uploading}>Batal</Button>
+        <Button onClick={handleSave} disabled={files.length === 0 || uploading}>
+          {uploading ? 'Mengunggah...' : <><Camera size={15} /> Simpan Foto</>}
+        </Button>
+      </>}
+    >
+      <div className="flex flex-col gap-4">
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
+          Unggah foto yang menunjukkan kondisi awal / kondisi saat temuan ditemukan. Foto ini bersifat permanen dan tidak dapat dihapus setelah disimpan.
+        </div>
+        <FileUpload
+          label="Foto Kondisi Awal"
+          accept="image/*"
+          maxFiles={10}
+          maxSizeMB={10}
+          onChange={setFiles}
+        />
+      </div>
+    </Modal>
+  )
+}
+
+function ClosingOnlyModal({ open, onClose, onSave, lastEntry, isOverdue }: {
+  open: boolean
+  onClose: () => void
+  lastEntry: FindingProgressEntry | undefined
+  isOverdue?: boolean
+  onSave: (data: { condition_after: string; evidenceFiles: File[] }) => void
+}) {
+  const [condition_after, setConditionAfter] = useState('')
+  const [evidenceFiles, setEvidenceFiles] = useState<File[]>([])
+
+  useEffect(() => {
+    if (open) {
+      setConditionAfter(lastEntry?.description ?? '')
+      setEvidenceFiles([])
+    }
+  }, [open])
+
+  const valid = condition_after.trim() !== ''
+
+  return (
+    <Modal open={open} onClose={onClose} title="Ajukan Closing Temuan" size="lg"
       footer={<>
         <Button variant="ghost" onClick={onClose}>Batal</Button>
-        <Button onClick={() => { if (form.action_date && form.action_type && form.description) onSave(form) }}>Simpan Progress</Button>
+        <Button onClick={() => valid && onSave({ condition_after, evidenceFiles })} disabled={!valid}>
+          <Send size={15} /> Ajukan Closing
+        </Button>
+      </>}
+    >
+      <div className="flex flex-col gap-4">
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
+          Form diisi otomatis dari <strong>progress terakhir</strong>. Periksa dan sesuaikan jika perlu.
+        </div>
+
+        {/* Preview progress terakhir */}
+        {lastEntry && (
+          <div className="flex flex-col gap-2">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Data dari Progress Terakhir</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <p className="text-[11px] text-gray-400 mb-0.5">Tanggal Penyelesaian</p>
+                <p className="text-sm font-semibold text-gray-700">{formatDate(lastEntry.action_date)}</p>
+              </div>
+              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <p className="text-[11px] text-gray-400 mb-0.5">Jenis Tindakan</p>
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${getActionTypeColor(lastEntry.action_type)}`}>
+                  {getActionTypeLabel(lastEntry.action_type)}
+                </span>
+              </div>
+            </div>
+            <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+              <p className="text-[11px] text-gray-400 mb-0.5">Ringkasan Tindakan</p>
+              <p className="text-sm text-gray-700">{lastEntry.description}</p>
+            </div>
+          </div>
+        )}
+
+        <div className="flex flex-col gap-4 pl-4 border-l-2 border-amber-300">
+          {isOverdue && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+              <p className="font-semibold mb-1">Temuan Melewati Batas Target</p>
+              <p>Closing akan dicatat sebagai <strong>raport buruk</strong> dan memengaruhi penilaian kinerja.</p>
+            </div>
+          )}
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+            Setelah diajukan, status berubah menjadi <strong>PENDING APPROVAL</strong> dan atasan akan menerima notifikasi.
+          </div>
+          <Textarea label="Kondisi Setelah Perbaikan" required value={condition_after}
+            onChange={e => setConditionAfter(e.target.value)}
+            placeholder="Deskripsi kondisi objek setelah perbaikan selesai..." rows={3} />
+          <FileUpload label="Foto Evidence Closing" accept="image/*,.pdf" maxFiles={10} maxSizeMB={10} onChange={setEvidenceFiles} />
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+function AddProgressModal({ open, onClose, onSave, isOverdue, initialWithClosing }: {
+  open: boolean
+  onClose: () => void
+  isOverdue?: boolean
+  initialWithClosing?: boolean
+  onSave: (data: {
+    action_date: string; action_type: string; description: string
+    next_steps: string; next_action_date: string; photos: File[]
+    closing?: { summary: string; condition_after: string; closing_date: string; evidenceFiles: File[] }
+  }) => void
+}) {
+  const [form, setForm] = useState({ action_date: '', action_type: '', description: '', next_steps: '', next_action_date: '' })
+  const [photos, setPhotos] = useState<File[]>([])
+  const [withClosing, setWithClosing] = useState(false)
+  const [condition_after, setConditionAfter] = useState('')
+  const [evidenceFiles, setEvidenceFiles] = useState<File[]>([])
+  const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }))
+
+  useEffect(() => {
+    if (open) setWithClosing(!!initialWithClosing)
+  }, [open, initialWithClosing])
+
+  const progressValid = form.action_date && form.action_type && form.description
+  const closingValid = !withClosing || condition_after.trim() !== ''
+
+  const handleSave = () => {
+    if (!progressValid || !closingValid) return
+    onSave({
+      ...form, photos,
+      closing: withClosing ? {
+        closing_date: form.action_date,
+        summary: form.description,
+        condition_after,
+        evidenceFiles,
+      } : undefined,
+    })
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title={initialWithClosing ? 'Ajukan Closing Temuan' : 'Tambah Progress Entry'} size="lg"
+      footer={<>
+        <Button variant="ghost" onClick={onClose}>Batal</Button>
+        <Button onClick={handleSave} disabled={!progressValid || !closingValid}>
+          {withClosing ? <><Send size={15} /> {initialWithClosing ? 'Ajukan Closing' : 'Simpan & Ajukan Closing'}</> : 'Simpan Progress'}
+        </Button>
       </>}
     >
       <div className="flex flex-col gap-4">
@@ -528,57 +819,67 @@ function AddProgressModal({ open, onClose, onSave }: {
           placeholder="Rencana tindakan berikutnya..." rows={2} />
         <Input type="date" label="Target Tindakan Berikutnya" value={form.next_action_date} onChange={e => set('next_action_date', e.target.value)}
           hint="Opsional – jika diisi dan terlewat, sistem akan mengirim reminder" />
-        <FileUpload
-          label="Foto Progress"
-          accept="image/*"
-          maxFiles={5}
-          maxSizeMB={10}
-        />
-      </div>
-    </Modal>
-  )
-}
+        <FileUpload label="Foto Progress" accept="image/*" maxFiles={5} maxSizeMB={10} onChange={setPhotos} />
 
-function ClosingFormModal({ open, onClose, onSave, isOverdue }: {
-  open: boolean
-  onClose: () => void
-  onSave: (data: { action_date: string; summary: string; condition_after: string }) => void
-  isOverdue?: boolean
-}) {
-  const [form, setForm] = useState({ action_date: '', summary: '', condition_after: '' })
-  const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }))
-
-  return (
-    <Modal open={open} onClose={onClose} title="Ajukan Closing Temuan" size="lg"
-      footer={<>
-        <Button variant="ghost" onClick={onClose}>Batal</Button>
-        <Button onClick={() => { if (form.action_date && form.summary && form.condition_after) onSave(form) }}><Send size={15} /> Ajukan Closing</Button>
-      </>}
-    >
-      <div className="flex flex-col gap-4">
-        {isOverdue && (
-          <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
-            <p className="font-semibold mb-1">Perhatian: Temuan Melewati Batas Target</p>
-            <p>Temuan ini diajukan closing <strong>setelah melewati tanggal target closing</strong>. Closing tetap dapat diproses, namun akan dicatat sebagai <strong>raport buruk</strong> dan memengaruhi penilaian kinerja tim.</p>
+        {/* Toggle closing */}
+        {!initialWithClosing && (
+          <div
+            className={cn(
+              'flex items-center gap-3 p-3 rounded-lg border cursor-pointer select-none transition-colors',
+              withClosing ? 'bg-amber-50 border-amber-300' : 'bg-gray-50 border-gray-200 hover:border-gray-300'
+            )}
+            onClick={() => setWithClosing(v => !v)}
+          >
+            <div className={cn('w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors',
+              withClosing ? 'bg-amber-500 border-amber-500' : 'border-gray-300 bg-white')}>
+              {withClosing && <span className="text-white text-[11px] font-bold leading-none">✓</span>}
+            </div>
+            <div>
+              <p className={cn('text-sm font-semibold', withClosing ? 'text-amber-800' : 'text-gray-700')}>
+                Langsung Ajukan Closing
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Tandai ini jika tindakan di atas adalah penyelesaian terakhir temuan
+              </p>
+            </div>
           </div>
         )}
-        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
-          Setelah diajukan, status temuan berubah menjadi <strong>PENDING APPROVAL</strong>. Atasan akan mereview seluruh timeline dan evidence sebelum menyetujui.
-        </div>
-        <Input type="date" label="Tanggal Penyelesaian Akhir" required value={form.action_date} onChange={e => set('action_date', e.target.value)} />
-        <Textarea label="Ringkasan Tindakan Keseluruhan" required value={form.summary} onChange={e => set('summary', e.target.value)}
-          placeholder="Ringkasan lengkap semua tindakan yang telah diambil dari awal hingga selesai..." rows={4} />
-        <Textarea label="Kondisi Setelah Perbaikan/Penyelesaian" required value={form.condition_after} onChange={e => set('condition_after', e.target.value)}
-          placeholder="Deskripsi kondisi obyek setelah perbaikan selesai..." rows={3} />
-        <FileUpload
-          label="Foto Evidence Closing"
-          required
-          accept="image/*,.pdf"
-          maxFiles={10}
-          maxSizeMB={10}
-        />
+
+        {withClosing && (
+          <div className="flex flex-col gap-4 pl-4 border-l-2 border-amber-300">
+            {isOverdue && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+                <p className="font-semibold mb-1">Temuan Melewati Batas Target</p>
+                <p>Closing akan dicatat sebagai <strong>raport buruk</strong> dan memengaruhi penilaian kinerja.</p>
+              </div>
+            )}
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+              Setelah diajukan, status berubah menjadi <strong>PENDING APPROVAL</strong> dan atasan akan menerima notifikasi.
+            </div>
+
+            {/* Preview data yang diambil dari progress */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <p className="text-[11px] text-gray-400 mb-0.5">Tanggal Penyelesaian</p>
+                <p className="text-sm font-semibold text-gray-700">{form.action_date || '—'}</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">Dari tanggal tindakan</p>
+              </div>
+              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 col-span-1">
+                <p className="text-[11px] text-gray-400 mb-0.5">Ringkasan Tindakan</p>
+                <p className="text-sm text-gray-700 line-clamp-2">{form.description || '—'}</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">Dari deskripsi tindakan</p>
+              </div>
+            </div>
+
+            <Textarea label="Kondisi Setelah Perbaikan" required value={condition_after}
+              onChange={e => setConditionAfter(e.target.value)}
+              placeholder="Deskripsi kondisi objek setelah perbaikan selesai..." rows={2} />
+            <FileUpload label="Foto Evidence Closing" accept="image/*,.pdf" maxFiles={10} maxSizeMB={10} onChange={setEvidenceFiles} />
+          </div>
+        )}
       </div>
     </Modal>
   )
 }
+
 

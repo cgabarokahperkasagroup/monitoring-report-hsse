@@ -1,8 +1,8 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { ArrowLeft, Save } from 'lucide-react'
-import { usePISKapalStore } from '@/stores/pisKapalStore'
-import { mockPISPerusahaan, mockPISTemuanTypes, mockPISKategori, mockUsers } from '@/data/mockData'
+import { usePISFindingsData } from '@/hooks/usePISFindingsData'
+import { supabase } from '@/lib/supabase'
 import { useShips } from '@/hooks/useShips'
 import { PIS_FINDING_STATUS_OPTIONS } from '@/data/masterOptions'
 import type { PISFindingStatus, PISFindingTemuan, PISPerusahaan } from '@/types'
@@ -97,14 +97,32 @@ function SectionCard({ title, children }: { title: string; children: React.React
   )
 }
 
-const opHeadOptions = mockUsers.filter(u => u.role === 'OP_HEAD' && u.is_active)
-const picOptions = mockUsers.filter(u => ['OP_HEAD', 'STAFF_HSSE', 'HEAD_HSSE', 'PIC'].includes(u.role) && u.is_active)
-
 export default function CreatePISKapalPage() {
   const navigate = useNavigate()
-  const { addFinding, findings } = usePISKapalStore()
+  const location = useLocation()
+  const backPath: string = (location.state as { from?: string } | null)?.from ?? '/pis-findings'
+  const { addFinding } = usePISFindingsData()
   const { ships } = useShips()
   const [form, setForm] = useState<FormData>(INITIAL)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  const [pisPerusahaan, setPisPerusahaan] = useState<Array<{id: string, code: string}>>([])
+  const [pisTemuanTypes, setPisTemuanTypes] = useState<Array<{id: string, code: string, label: string}>>([])
+  const [pisKategori, setPisKategori] = useState<Array<{id: string, name: string}>>([])
+  const [opHeadOptions, setOpHeadOptions] = useState<Array<{id: string, full_name: string}>>([])
+  const [picOptions, setPicOptions] = useState<Array<{id: string, full_name: string}>>([])
+  useEffect(() => {
+    supabase.from('pis_perusahaan').select('id, code').eq('is_active', true)
+      .then(({ data }) => { if (data) setPisPerusahaan(data as Array<{id: string, code: string}>) })
+    supabase.from('pis_finding_types').select('id, code, label').eq('is_active', true)
+      .then(({ data }) => { if (data) setPisTemuanTypes(data as Array<{id: string, code: string, label: string}>) })
+    supabase.from('pis_categories').select('id, name').eq('is_active', true)
+      .then(({ data }) => { if (data) setPisKategori(data as Array<{id: string, name: string}>) })
+    supabase.from('users').select('id, full_name').eq('role', 'OP_HEAD').eq('is_active', true)
+      .then(({ data }) => { if (data) setOpHeadOptions(data as Array<{id: string, full_name: string}>) })
+    supabase.from('users').select('id, full_name').in('role', ['OP_HEAD', 'STAFF_HSSE', 'HEAD_HSSE', 'PIC']).eq('is_active', true)
+      .then(({ data }) => { if (data) setPicOptions(data as Array<{id: string, full_name: string}>) })
+  }, [])
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({})
 
   function set<K extends keyof FormData>(key: K, value: FormData[K]) {
@@ -127,14 +145,12 @@ export default function CreatePISKapalPage() {
     return Object.keys(e).length === 0
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!validate()) return
+    setSaveError(null)
 
-    const nextNo = findings.length > 0 ? Math.max(...findings.map(f => f.no)) + 1 : 1
-
-    addFinding({
-      no: form.no ? parseInt(form.no) : nextNo,
+    const result = await addFinding({
       perusahaan: form.perusahaan as PISPerusahaan,
       deskripsi: form.deskripsi.trim(),
       nama_kapal: form.nama_kapal.trim(),
@@ -157,7 +173,12 @@ export default function CreatePISKapalPage() {
       pending_invoice_finance: form.pending_invoice_finance,
     })
 
-    navigate('/pis-findings')
+    if (result?.error) {
+      setSaveError(result.error)
+      return
+    }
+
+    navigate(backPath)
   }
 
   const err = (k: keyof FormData) => errors[k] ? <p className="text-xs text-red-500 mt-1">{errors[k]}</p> : null
@@ -167,7 +188,7 @@ export default function CreatePISKapalPage() {
 
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => navigate('/pis-findings')} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+        <button onClick={() => navigate(backPath)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
           <ArrowLeft size={18} className="text-gray-600" />
         </button>
         <div>
@@ -189,7 +210,7 @@ export default function CreatePISKapalPage() {
               <Label required>Perusahaan</Label>
               <Select value={form.perusahaan} onChange={e => set('perusahaan', e.target.value as PISPerusahaan | '')}>
                 <option value="">-- Pilih --</option>
-                {mockPISPerusahaan.filter(p => p.is_active).map(p => <option key={p.id} value={p.kode}>{p.kode}</option>)}
+                {pisPerusahaan.map(p => <option key={p.id} value={p.code}>{p.code}</option>)}
               </Select>
               {err('perusahaan')}
             </div>
@@ -197,7 +218,7 @@ export default function CreatePISKapalPage() {
               <Label required>Jenis Temuan</Label>
               <Select value={form.temuan} onChange={e => set('temuan', e.target.value as PISFindingTemuan | '')}>
                 <option value="">-- Pilih --</option>
-                {mockPISTemuanTypes.filter(t => t.is_active).map(t => <option key={t.id} value={t.value}>{t.label}</option>)}
+                {pisTemuanTypes.map(t => <option key={t.id} value={t.code}>{t.label}</option>)}
               </Select>
               {err('temuan')}
             </div>
@@ -213,7 +234,7 @@ export default function CreatePISKapalPage() {
               <Label required>Kategori</Label>
               <Select value={form.category} onChange={e => set('category', e.target.value)}>
                 <option value="">-- Pilih Kategori --</option>
-                {mockPISKategori.filter(k => k.is_active).map(k => <option key={k.id} value={k.nama}>{k.nama}</option>)}
+                {pisKategori.map(k => <option key={k.id} value={k.name}>{k.name}</option>)}
               </Select>
               {err('category')}
             </div>
@@ -349,10 +370,15 @@ export default function CreatePISKapalPage() {
         </SectionCard>
 
         {/* ── Action Buttons ────────────────────────────────────────────────── */}
+        {saveError && (
+          <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
+            Gagal menyimpan: {saveError}
+          </div>
+        )}
         <div className="flex justify-end gap-3 pb-6">
           <button
             type="button"
-            onClick={() => navigate('/pis-findings')}
+            onClick={() => navigate(backPath)}
             className="px-5 py-2 text-sm font-medium text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50"
           >
             Batal

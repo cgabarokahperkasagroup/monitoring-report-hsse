@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   CalendarDays, Search, Eye, Plus,
@@ -6,10 +6,9 @@ import {
   ClipboardCheck, ShieldCheck, Loader2
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import {
-  mockInspectionSchedules, mockFleets, mockHseOfficers,
-  mockInternalInspections
-} from '@/data/mockData'
+import { supabase } from '@/lib/supabase'
+import { useInspectionSchedulesData } from '@/hooks/useInspectionSchedulesData'
+import { useInternalInspectionsData } from '@/hooks/useInternalInspectionsData'
 import { useShips, getFleetOptions } from '@/hooks/useShips'
 import { INSPECTION_SCHEDULE_STATUS_OPTIONS } from '@/data/masterOptions'
 import { formatDateShort, getInspectionResultLabel, getInspectionResultColor, getStatusLabel, getStatusColor } from '@/utils'
@@ -34,9 +33,20 @@ function getScheduleStatusConfig(status: InspectionScheduleStatus) {
 export default function InternalInspectionSchedulePage() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
+  const { schedules: mockInspectionSchedules } = useInspectionSchedulesData()
+  const { inspections: mockInternalInspections } = useInternalInspectionsData()
   const { ships } = useShips()
   const canManagePlan = user?.role === 'HEAD_HSSE' || user?.role === 'SUPER_ADMIN'
   const isHeadHsse = canManagePlan
+
+  const [hseOfficers, setHseOfficers] = useState<Array<{id: string, full_name: string, email: string}>>([])
+  const [fleets, setFleets] = useState<Array<{id: string, name: string, hse_officer_id: string | null}>>([])
+  useEffect(() => {
+    supabase.from('users').select('id, full_name, email').in('role', ['STAFF_HSSE', 'PIC']).eq('is_active', true)
+      .then(({ data }) => { if (data) setHseOfficers(data as Array<{id: string, full_name: string, email: string}>) })
+    supabase.from('fleets').select('id, name, hse_officer_id').eq('is_active', true)
+      .then(({ data }) => { if (data) setFleets(data as Array<{id: string, name: string, hse_officer_id: string | null}>) })
+  }, [])
 
   const [tab, setTab] = useState<'plan' | 'actual'>('plan')
 
@@ -55,8 +65,9 @@ export default function InternalInspectionSchedulePage() {
   // ── Plan tab data ──────────────────────────────────────────────────────────
 
   const filteredPlans = mockInspectionSchedules.filter(s => {
-    const matchFleet = !fleetFilter || s.fleet_id === fleetFilter
-    const matchVessel = !vesselFilter || s.vessel_id === vesselFilter
+    // fleet_id/vessel_id selalu null (SMS API pakai external_id) — filter pakai external_id
+    const matchFleet = !fleetFilter || String((s as any).fleet_external_id) === fleetFilter
+    const matchVessel = !vesselFilter || String((s as any).vessel_external_id) === vesselFilter
     const matchStatus = !statusFilter || s.status === statusFilter
     const matchHse = !hseFilter || s.hse_officer_id === hseFilter
     const q = search.toLowerCase()
@@ -194,7 +205,7 @@ export default function InternalInspectionSchedulePage() {
               <select value={hseFilter} onChange={e => setHseFilter(e.target.value)}
                 className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none cursor-pointer">
                 <option value="">Semua HSE PIC</option>
-                {mockHseOfficers.map(h => <option key={h.id} value={h.id}>{h.full_name}</option>)}
+                {hseOfficers.map(h => <option key={h.id} value={h.id}>{h.full_name}</option>)}
               </select>
               <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
                 className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none cursor-pointer">
@@ -309,7 +320,7 @@ export default function InternalInspectionSchedulePage() {
                                 </Button>
                               ) : (
                                 <Button variant="outline" size="sm"
-                                  onClick={() => navigate('/inspections/internal/new')}
+                                  onClick={() => navigate(`/inspections/internal/new?scheduleId=${s.id}`)}
                                   className="gap-1 text-xs">
                                   <Plus size={13} /> Realisasi
                                 </Button>
@@ -329,8 +340,8 @@ export default function InternalInspectionSchedulePage() {
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
             <h3 className="text-sm font-semibold text-gray-700 mb-4">HSE PIC per Armada</h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {mockFleets.map(fleet => {
-                const hse = mockHseOfficers.find(h => h.id === fleet.hse_officer_id)
+              {fleets.map(fleet => {
+                const hse = hseOfficers.find(h => h.id === fleet.hse_officer_id)
                 const fleetSchedules = periodAll.filter(s => s.fleet_id === fleet.id)
                 const done = fleetSchedules.filter(s => s.status === 'COMPLETED').length
                 const total = fleetSchedules.length

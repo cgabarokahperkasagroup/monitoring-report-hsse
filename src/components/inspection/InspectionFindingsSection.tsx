@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Plus, Send, CheckCircle, XCircle, AlertTriangle, Clock,
   Calendar, User, ImageIcon, ChevronDown, ChevronUp
@@ -33,9 +33,17 @@ const priorityOptions = [
   { value: 'LOW', label: 'Rendah' },
 ]
 
+interface FindingOps {
+  addProgress?: (findingId: string, data: Omit<InspectionFindingProgress, 'id' | 'created_at'>) => Promise<{ error?: string }>
+  submitClosing?: (findingId: string, data: { action_date: string; summary: string; condition_after: string; evidence_photos: string[] }) => Promise<{ error?: string }>
+  approveClosing?: (findingId: string) => Promise<{ error?: string }>
+  rejectClosing?: (findingId: string, notes: string) => Promise<{ error?: string }>
+}
+
 interface Props {
   initialFindings: InspectionFinding[]
   canAdd?: boolean
+  findingOps?: FindingOps
 }
 
 // ──────────────────────────────────────────────────────────
@@ -131,19 +139,32 @@ function InspAddProgressModal({ open, onClose, onSave }: {
 // ──────────────────────────────────────────────────────────
 // InspClosingFormModal
 // ──────────────────────────────────────────────────────────
-function InspClosingFormModal({ open, onClose, onSave, isOverdue }: {
+function InspClosingFormModal({ open, onClose, onSave, isOverdue, lastEntry }: {
   open: boolean
   onClose: () => void
   onSave: (data: { action_date: string; summary: string; condition_after: string }) => void
   isOverdue?: boolean
+  lastEntry?: InspectionFindingProgress
 }) {
   const [form, setForm] = useState({ action_date: '', summary: '', condition_after: '' })
   const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }))
+
+  useEffect(() => {
+    if (open) {
+      setForm({
+        action_date: lastEntry?.action_date ?? '',
+        summary: lastEntry?.description ?? '',
+        condition_after: lastEntry?.description ?? '',
+      })
+    }
+  }, [open])
 
   const handleClose = () => {
     setForm({ action_date: '', summary: '', condition_after: '' })
     onClose()
   }
+
+  const hasAutoFill = !!(lastEntry?.action_date || lastEntry?.description)
 
   return (
     <Modal open={open} onClose={handleClose} title="Ajukan Closing Temuan" size="lg"
@@ -159,6 +180,11 @@ function InspClosingFormModal({ open, onClose, onSave, isOverdue }: {
           <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
             <p className="font-semibold mb-1">Perhatian: Temuan Melewati Batas Target</p>
             <p>Temuan ini diajukan closing <strong>setelah melewati tanggal target closing</strong>. Closing tetap dapat diproses, namun akan dicatat sebagai <strong>raport buruk</strong> dan memengaruhi penilaian kinerja tim.</p>
+          </div>
+        )}
+        {hasAutoFill && (
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
+            Form diisi otomatis dari <strong>progress terakhir</strong>. Periksa dan sesuaikan jika perlu.
           </div>
         )}
         <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
@@ -265,10 +291,11 @@ function InspAddFindingModal({ open, onClose, onSave }: {
 // ──────────────────────────────────────────────────────────
 // InspectionFindingDetailModal
 // ──────────────────────────────────────────────────────────
-function InspectionFindingDetailModal({ finding: initialFinding, onClose, onUpdate }: {
+function InspectionFindingDetailModal({ finding: initialFinding, onClose, onUpdate, findingOps }: {
   finding: InspectionFinding
   onClose: () => void
   onUpdate: (updated: InspectionFinding) => void
+  findingOps?: FindingOps
 }) {
   const { user } = useAuthStore()
   const { success, error: showError } = useToast()
@@ -569,7 +596,7 @@ function InspectionFindingDetailModal({ finding: initialFinding, onClose, onUpda
       <InspAddProgressModal
         open={showAddProgress}
         onClose={() => setShowAddProgress(false)}
-        onSave={(data) => {
+        onSave={async (data) => {
           const newEntry: InspectionFindingProgress = {
             id: `iprg-${Date.now()}`,
             action_date: data.action_date || new Date().toISOString().split('T')[0],
@@ -585,6 +612,16 @@ function InspectionFindingDetailModal({ finding: initialFinding, onClose, onUpda
             progress_entries: [...(finding.progress_entries ?? []), newEntry],
           }
           updateFinding(updated)
+          if (findingOps?.addProgress) {
+            const result = await findingOps.addProgress(finding.id, {
+              action_date: newEntry.action_date,
+              action_type: newEntry.action_type,
+              description: newEntry.description,
+              next_steps: newEntry.next_steps,
+              next_action_date: newEntry.next_action_date,
+            })
+            if (result?.error) { showError('Gagal menyimpan progress', result.error); return }
+          }
           success('Progress ditambahkan', 'Status temuan diperbarui menjadi In Progress')
         }}
       />
@@ -593,7 +630,8 @@ function InspectionFindingDetailModal({ finding: initialFinding, onClose, onUpda
         open={showClosingForm}
         onClose={() => setShowClosingForm(false)}
         isOverdue={finding.status === 'OVERDUE'}
-        onSave={(data) => {
+        lastEntry={progressEntries.length > 0 ? progressEntries[progressEntries.length - 1] : undefined}
+        onSave={async (data) => {
           const updated = {
             ...finding,
             status: 'PENDING_APPROVAL' as FindingStatus,
@@ -607,6 +645,15 @@ function InspectionFindingDetailModal({ finding: initialFinding, onClose, onUpda
             }
           }
           updateFinding(updated)
+          if (findingOps?.submitClosing) {
+            const result = await findingOps.submitClosing(finding.id, {
+              action_date: data.action_date || new Date().toISOString().split('T')[0],
+              summary: data.summary,
+              condition_after: data.condition_after,
+              evidence_photos: [],
+            })
+            if (result?.error) { showError('Gagal menyimpan closing', result.error); return }
+          }
           success('Closing diajukan', 'Atasan akan menerima notifikasi untuk mereview')
         }}
       />
@@ -615,7 +662,7 @@ function InspectionFindingDetailModal({ finding: initialFinding, onClose, onUpda
         open={showReviewModal}
         onClose={() => setShowReviewModal(false)}
         decision={reviewDecision}
-        onSave={(rejectionNotes) => {
+        onSave={async (rejectionNotes) => {
           if (reviewDecision === 'APPROVED') {
             const updated = {
               ...finding,
@@ -628,6 +675,10 @@ function InspectionFindingDetailModal({ finding: initialFinding, onClose, onUpda
               } : finding.closing_request,
             }
             updateFinding(updated)
+            if (findingOps?.approveClosing) {
+              const result = await findingOps.approveClosing(finding.id)
+              if (result?.error) { showError('Gagal menyimpan', result.error); return }
+            }
             success('Closing disetujui', 'Temuan ditutup secara resmi')
           } else {
             const updated = {
@@ -641,6 +692,10 @@ function InspectionFindingDetailModal({ finding: initialFinding, onClose, onUpda
               } : finding.closing_request,
             }
             updateFinding(updated)
+            if (findingOps?.rejectClosing) {
+              const result = await findingOps.rejectClosing(finding.id, rejectionNotes)
+              if (result?.error) { showError('Gagal menyimpan', result.error); return }
+            }
             showError('Closing ditolak', 'PIC dapat melanjutkan menambah progress')
           }
           setReviewDecision(null)
@@ -653,11 +708,17 @@ function InspectionFindingDetailModal({ finding: initialFinding, onClose, onUpda
 // ──────────────────────────────────────────────────────────
 // Main: InspectionFindingsSection
 // ──────────────────────────────────────────────────────────
-export default function InspectionFindingsSection({ initialFindings, canAdd = false }: Props) {
+export default function InspectionFindingsSection({ initialFindings, canAdd = false, findingOps }: Props) {
   const { success } = useToast()
   const [findings, setFindings] = useState<InspectionFinding[]>(initialFindings)
   const [selected, setSelected] = useState<InspectionFinding | null>(null)
   const [showAddFinding, setShowAddFinding] = useState(false)
+
+  // Sync local findings state when parent refetches (after DB writes)
+  useEffect(() => {
+    setFindings(initialFindings)
+    setSelected(prev => prev ? (initialFindings.find(f => f.id === prev.id) ?? prev) : null)
+  }, [initialFindings])
 
   const handleUpdate = (updated: InspectionFinding) => {
     setFindings(prev => prev.map(f => f.id === updated.id ? updated : f))
@@ -774,6 +835,7 @@ export default function InspectionFindingsSection({ initialFindings, canAdd = fa
           finding={selected}
           onClose={() => setSelected(null)}
           onUpdate={handleUpdate}
+          findingOps={findingOps}
         />
       )}
 

@@ -1,8 +1,7 @@
-import { Bell, Search } from 'lucide-react'
-import { useState } from 'react'
+import { Bell } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
-import { mockNotifications } from '@/data/mockData'
+import { useNotificationsData } from '@/hooks/useNotificationsData'
 
 interface HeaderProps {
   title: string
@@ -12,7 +11,7 @@ interface HeaderProps {
 export function Header({ title, subtitle }: HeaderProps) {
   const { user } = useAuthStore()
   const navigate = useNavigate()
-  const unreadCount = mockNotifications.filter(n => n.user_id === user?.id && !n.is_read).length
+  const { unreadCount } = useNotificationsData(user?.id)
 
   return (
     <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
@@ -28,7 +27,7 @@ export function Header({ title, subtitle }: HeaderProps) {
           <Bell size={20} />
           {unreadCount > 0 && (
             <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center font-bold">
-              {unreadCount}
+              {unreadCount > 9 ? '9+' : unreadCount}
             </span>
           )}
         </button>

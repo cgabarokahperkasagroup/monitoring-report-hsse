@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { Printer, ArrowLeft } from 'lucide-react'
-import { mockVisits, mockFindings } from '@/data/mockData'
+import { useVisit } from '@/hooks/useVisitsData'
 import { formatDate } from '@/utils'
 import {
   PREP_OFFICE_ITEMS, PREP_VESSEL_ITEMS,
@@ -57,13 +57,12 @@ export default function PrintVisitReportPage() {
   const { id } = useParams()
   const navigate = useNavigate()
 
-  const visit = mockVisits.find(v => v.id === id)
-  const findings = mockFindings.filter(f => f.visit_id === id)
+  const { visit, findings, loading } = useVisit(id)
 
   // Read inspection data from sessionStorage (filled in VisitDetailPage)
   const [inspection, setInspection] = useState<VesselInspectionData | null>(null)
   useEffect(() => {
-    if (!id) return
+    if (!id || !visit) return
     const stored = sessionStorage.getItem(inspectionStorageKey(id))
     if (stored) {
       try {
@@ -71,9 +70,14 @@ export default function PrintVisitReportPage() {
         return
       } catch { /* ignore */ }
     }
-    // fallback: use visit defaults (no checklist filled)
-    if (visit) setInspection(defaultInspectionData(visit.agenda, visit.summary))
-  }, [id, visit])
+    setInspection(defaultInspectionData(visit.agenda, visit.summary))
+  }, [id, visit?.id])
+
+  if (loading) return (
+    <div className="flex items-center justify-center h-screen">
+      <div className="w-8 h-8 border-4 border-[#1B3A6B] border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
 
   if (!visit) return (
     <div className="flex flex-col items-center justify-center h-screen gap-3">

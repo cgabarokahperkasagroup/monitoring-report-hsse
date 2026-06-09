@@ -3,9 +3,8 @@ import {
   ArrowLeft, ClipboardCheck, Calendar, User, Ship, CheckCircle2,
   AlertTriangle, AlertCircle, Printer
 } from 'lucide-react'
-import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { mockInternalInspections } from '@/data/mockData'
+import { useInternalInspection } from '@/hooks/useInternalInspectionsData'
 import {
   formatDateShort, getInspectionResultLabel, getInspectionResultColor,
   getStatusLabel, getStatusColor
@@ -25,7 +24,16 @@ export default function InternalInspectionDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const [insp] = useState(() => mockInternalInspections.find(i => i.id === id))
+  const {
+    inspection: insp, loading,
+    addFindingProgress, submitFindingClosing, approveFindingClosing, rejectFindingClosing,
+  } = useInternalInspection(id)
+
+  if (loading) return (
+    <div className="flex items-center justify-center h-64">
+      <div className="w-8 h-8 border-4 border-[#1B3A6B] border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
 
   if (!insp) {
     return (
@@ -163,6 +171,12 @@ export default function InternalInspectionDetailPage() {
       <InspectionFindingsSection
         initialFindings={insp.findings}
         canAdd={!!(user && ['SUPER_ADMIN', 'ADMIN', 'MANAGEMENT', 'OP_HEAD'].includes(user.role) && insp.status !== 'DRAFT')}
+        findingOps={{
+          addProgress: (fId, data) => addFindingProgress(fId, data),
+          submitClosing: (fId, data) => submitFindingClosing(fId, data),
+          approveClosing: (fId) => approveFindingClosing(fId),
+          rejectClosing: (fId, notes) => rejectFindingClosing(fId, notes),
+        }}
       />
 
       {/* Notes */}

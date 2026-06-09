@@ -1,13 +1,14 @@
-import { useState, FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect, FormEvent } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ChevronDown, ChevronUp, Plus, Trash2, AlertTriangle, CheckCircle2, Info } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input, Textarea, Select } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { useAuthStore } from '@/stores/authStore'
-import { mockBusinessUnits, mockFleets, mockUsers } from '@/data/mockData'
-import { useShips, shipOptions } from '@/hooks/useShips'
+import { supabase } from '@/lib/supabase'
+import { createInternalInspection } from '@/hooks/useInternalInspectionsData'
+import { useShips, shipOptions, findShipById } from '@/hooks/useShips'
 import type { FindingPriority } from '@/types'
 
 // ─── Checklist definition ─────────────────────────────────────────────────────
@@ -150,7 +151,7 @@ function StatusToggle({ value, onChange }: { value: ItemStatus; onChange: (v: It
   return (
     <div className="flex items-center gap-1.5 shrink-0">
       {btn('OK', '✓ OK', 'border-green-400 bg-green-100 text-green-800')}
-      {btn('NOK', '✗ NOK', 'border-red-400 bg-red-100 text-red-800')}
+      {btn('NOK', '⚠ NO', 'border-red-400 bg-red-100 text-red-800')}
       {btn('NA', 'N/A', 'border-gray-400 bg-gray-100 text-gray-600')}
     </div>
   )
@@ -184,7 +185,7 @@ function AreaSection({
           <div className="flex items-center gap-2">
             {nokCount > 0 && (
               <span className="badge text-[10px] bg-red-100 text-red-700 border-red-200">
-                {nokCount} NOK
+                {nokCount} NO
               </span>
             )}
             {okCount > 0 && (
@@ -233,6 +234,8 @@ function AreaSection({
 
 export default function CreateInternalInspectionPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const scheduleId = searchParams.get('scheduleId')
   const { user } = useAuthStore()
   const { success, error } = useToast()
 
@@ -257,6 +260,41 @@ export default function CreateInternalInspectionPage() {
   const [step, setStep] = useState<1 | 2 | 3>(1)
 
   const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }))
+
+  const [businessUnits, setBusinessUnits] = useState<{ id: string; code: string; name: string }[]>([])
+  const [fromSchedule, setFromSchedule] = useState(false)
+
+  useEffect(() => {
+    supabase.from('business_units').select('id, code, name').order('name').then(({ data }) => {
+      if (data) {
+        const units = data as { id: string; code: string; name: string }[]
+        setBusinessUnits(units)
+        const shp = units.find(bu => bu.code === 'SHP')
+        if (shp) set('business_unit_id', shp.id)
+      }
+    })
+  }, [])
+
+  // Pre-fill dari jadwal inspeksi jika ada scheduleId di URL
+  useEffect(() => {
+    if (!scheduleId) return
+    supabase
+      .from('internal_inspection_schedules')
+      .select('vessel_external_id, vessel_name, scheduled_date, hse_officer:users!internal_inspection_schedules_hse_officer_id_fkey(full_name)')
+      .eq('id', scheduleId)
+      .single()
+      .then(({ data }) => {
+        if (!data) return
+        const d = data as { vessel_external_id?: number; vessel_name?: string; scheduled_date?: string; hse_officer?: { full_name?: string } | null }
+        setForm(p => ({
+          ...p,
+          vessel_id: d.vessel_external_id ? String(d.vessel_external_id) : p.vessel_id,
+          inspection_date: d.scheduled_date || p.inspection_date,
+          hse_pic: d.hse_officer?.full_name || p.hse_pic,
+        }))
+        setFromSchedule(true)
+      })
+  }, [scheduleId])
 
   const { ships } = useShips()
   const filteredVessels = shipOptions(ships)
@@ -301,17 +339,67 @@ export default function CreateInternalInspectionPage() {
     e.preventDefault()
     if (!form.vessel_id) { error('Data Tidak Lengkap', 'Pilih kapal terlebih dahulu.'); return }
     if (!form.inspection_date) { error('Data Tidak Lengkap', 'Tanggal inspeksi harus diisi.'); return }
-    if (!form.lead_inspector.trim()) { error('Data Tidak Lengkap', 'Lead inspektor harus diisi.'); return }
+    if (!user) return
 
     setSubmitting(true)
-    await new Promise(r => setTimeout(r, 900))
+
+    const buId = form.business_unit_id || businessUnits.find(bu => bu.code === 'SHP')?.id || ''
+    const deficientRate = totalItems > 0 ? nokCount / totalItems : 0
+    const result = !isDraft ? (deficientRate <= 0.1 ? 'SATISFACTORY' : deficientRate <= 0.3 ? 'CONDITIONAL' : 'UNSATISFACTORY') : undefined
+
+    const findings = [
+      ...nokItems.map(item => ({
+        internal_inspection_id: '',
+        external_inspection_id: undefined,
+        area: item.area,
+        description: item.item + (item.note ? `: ${item.note}` : ''),
+        priority: 'MEDIUM' as FindingPriority,
+        status: 'OPEN' as const,
+        assigned_to: undefined,
+        target_close_date: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+        initial_photos: [] as string[],
+        closing_evidence: [] as string[],
+      })),
+      ...extraFindings.filter(f => f.description).map(f => ({
+        internal_inspection_id: '',
+        external_inspection_id: undefined,
+        area: f.area || 'Temuan Tambahan',
+        description: f.description,
+        priority: f.priority as FindingPriority,
+        status: 'OPEN' as const,
+        assigned_to: undefined,
+        target_close_date: f.due_date || new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+        initial_photos: [] as string[],
+        closing_evidence: [] as string[],
+      })),
+    ]
+
+    const res = await createInternalInspection({
+      vessel_id: form.vessel_id,
+      vessel_name: findShipById(ships, form.vessel_id)?.name,
+      business_unit_id: buId,
+      inspection_date: form.inspection_date,
+      lead_inspector_id: user.id,
+      inspector_ids: [],
+      status: isDraft ? 'DRAFT' : 'SUBMITTED',
+      result,
+      total_items_checked: totalItems,
+      items_satisfactory: okCount,
+      items_deficient: nokCount,
+      notes: form.notes || undefined,
+      created_by: user.id,
+      findings,
+    })
+
     setSubmitting(false)
+
+    if (res.error) { error('Gagal menyimpan', res.error); return }
 
     success(
       isDraft ? 'Inspeksi Disimpan sebagai Draft' : 'Laporan Inspeksi Disubmit',
       isDraft ? 'Anda dapat melanjutkan pengisian kapan saja.' : 'Laporan akan diteruskan untuk approval.'
     )
-    navigate('/inspections/internal')
+    navigate(`/inspections/internal/${res.id}`)
   }
 
   return (
@@ -358,7 +446,9 @@ export default function CreateInternalInspectionPage() {
                 label="Unit Bisnis" required value={form.business_unit_id}
                 onChange={e => { set('business_unit_id', e.target.value); set('vessel_id', '') }}
                 placeholder="Pilih Unit Bisnis"
-                options={mockBusinessUnits.map(bu => ({ value: bu.id, label: `${bu.code} – ${bu.name}` }))}
+                options={businessUnits.map(bu => ({ value: bu.id, label: `${bu.code} – ${bu.name}` }))}
+                disabled
+                hint="Otomatis: Inspeksi kapal selalu untuk unit bisnis Shipping"
               />
 
               <Select
@@ -366,6 +456,8 @@ export default function CreateInternalInspectionPage() {
                 onChange={e => setForm(p => ({ ...p, vessel_id: e.target.value }))}
                 placeholder="Pilih Kapal"
                 options={filteredVessels}
+                disabled={fromSchedule}
+                hint={fromSchedule ? 'Kapal telah ditetapkan dari rencana jadwal inspeksi' : undefined}
               />
 
               {/* HSE PIC info — auto-derived from selected vessel's fleet */}
@@ -429,14 +521,14 @@ export default function CreateInternalInspectionPage() {
               </div>
               <div className="flex items-center gap-4 mt-2 text-xs">
                 <span className="flex items-center gap-1 text-green-700"><CheckCircle2 size={11} /> {okCount} OK</span>
-                <span className="flex items-center gap-1 text-red-600"><AlertTriangle size={11} /> {nokCount} NOK</span>
+                <span className="flex items-center gap-1 text-red-600"><AlertTriangle size={11} /> {nokCount} NO</span>
                 <span className="text-gray-400">{naCount} N/A</span>
               </div>
             </div>
 
             <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
               <Info size={14} className="text-blue-600 shrink-0 mt-0.5" />
-              <p className="text-xs text-blue-700">Centang <strong>✓ OK</strong> jika kondisi sesuai, <strong>✗ NOK</strong> jika tidak sesuai (wajib isi uraian), atau <strong>N/A</strong> jika tidak berlaku untuk kapal ini.</p>
+              <p className="text-xs text-blue-700">Centang <strong>✓ OK</strong> jika kondisi sesuai, <strong>⚠ NO</strong> jika tidak sesuai (wajib isi uraian), atau <strong>N/A</strong> jika tidak berlaku untuk kapal ini.</p>
             </div>
 
             {CHECKLIST_AREAS.map(({ area, items }) => (
@@ -478,7 +570,7 @@ export default function CreateInternalInspectionPage() {
                 </div>
                 <div className="bg-red-50 rounded-lg p-3">
                   <p className="text-2xl font-bold text-red-600">{nokCount}</p>
-                  <p className="text-xs text-gray-400">NOK</p>
+                  <p className="text-xs text-gray-400">NO</p>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-3">
                   <p className="text-2xl font-bold text-gray-500">{naCount}</p>

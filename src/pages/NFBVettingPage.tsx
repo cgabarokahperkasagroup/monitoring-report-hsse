@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   MessageSquareX, Shield, CheckCircle2, AlertCircle, Clock,
@@ -6,12 +6,12 @@ import {
   TrendingUp, Edit,
 } from 'lucide-react'
 import {
-  usePISKapalStore,
+  usePISFindingsData,
   getPISStatusLabel, getPISStatusColor,
   getPISTemuanLabel, getPISTemuanColor,
   getPISPerusahaanColor,
-} from '@/stores/pisKapalStore'
-import { mockPISPerusahaan, mockPISTemuanTypes, mockPISKategori } from '@/data/mockData'
+} from '@/hooks/usePISFindingsData'
+import { supabase } from '@/lib/supabase'
 import { PIS_FINDING_STATUS_OPTIONS } from '@/data/masterOptions'
 import { formatDateShort } from '@/utils'
 import type { PISFindingStatus, PISPerusahaan } from '@/types'
@@ -55,7 +55,19 @@ type SortKey = 'no' | 'nama_kapal' | 'perusahaan' | 'temuan' | 'category' | 'sta
 
 export default function NFBVettingPage() {
   const navigate = useNavigate()
-  const { findings: allFindings } = usePISKapalStore()
+  const { findings: allFindings } = usePISFindingsData()
+
+  const [pisPerusahaan, setPisPerusahaan] = useState<Array<{id: string, code: string}>>([])
+  const [pisTemuanTypes, setPisTemuanTypes] = useState<Array<{id: string, code: string, label: string}>>([])
+  const [pisKategori, setPisKategori] = useState<Array<{id: string, name: string}>>([])
+  useEffect(() => {
+    supabase.from('pis_perusahaan').select('id, code').eq('is_active', true)
+      .then(({ data }) => { if (data) setPisPerusahaan(data as Array<{id: string, code: string}>) })
+    supabase.from('pis_finding_types').select('id, code, label').eq('is_active', true)
+      .then(({ data }) => { if (data) setPisTemuanTypes(data as Array<{id: string, code: string, label: string}>) })
+    supabase.from('pis_categories').select('id, name').eq('is_active', true)
+      .then(({ data }) => { if (data) setPisKategori(data as Array<{id: string, name: string}>) })
+  }, [])
 
   // Hanya NFB dan Vetting Plus
   const findings = useMemo(
@@ -156,7 +168,7 @@ export default function NFBVettingPage() {
           </p>
         </div>
         <button
-          onClick={() => navigate('/pis-findings/new')}
+          onClick={() => navigate('/pis-findings/new', { state: { from: '/nfb-vetting' } })}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white"
           style={{ backgroundColor: '#1B3A6B' }}
         >
@@ -195,7 +207,7 @@ export default function NFBVettingPage() {
             className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none"
           >
             <option value="">Semua Perusahaan</option>
-            {mockPISPerusahaan.filter(p => p.is_active).map(p => <option key={p.id} value={p.kode}>{p.kode}</option>)}
+            {pisPerusahaan.map(p => <option key={p.id} value={p.code}>{p.code}</option>)}
           </select>
 
           <select
@@ -204,7 +216,7 @@ export default function NFBVettingPage() {
             className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none"
           >
             <option value="">Semua Tipe Temuan</option>
-            {mockPISTemuanTypes.filter(t => t.is_active && t.value !== 'SELF_ASSESSMENT').map(t => <option key={t.id} value={t.value}>{t.label}</option>)}
+            {pisTemuanTypes.filter(t => t.code !== 'SELF_ASSESSMENT').map(t => <option key={t.id} value={t.code}>{t.label}</option>)}
           </select>
 
           <select
@@ -222,7 +234,7 @@ export default function NFBVettingPage() {
             className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none"
           >
             <option value="">Semua Kategori</option>
-            {mockPISKategori.filter(k => k.is_active).map(k => <option key={k.id} value={k.nama}>{k.nama}</option>)}
+            {pisKategori.map(k => <option key={k.id} value={k.name}>{k.name}</option>)}
           </select>
 
           <select

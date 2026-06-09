@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { Bell, CheckCircle, AlertTriangle, Star, Ship, ClipboardList, Filter } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { mockNotifications } from '@/data/mockData'
 import { useAuthStore } from '@/stores/authStore'
+import { useNotificationsData } from '@/hooks/useNotificationsData'
 import { formatDateTime } from '@/utils'
 
 const typeIcons: Record<string, { icon: React.ElementType; color: string }> = {
@@ -22,22 +22,16 @@ export default function NotificationsPage() {
   const { user } = useAuthStore()
   const navigate = useNavigate()
   const [filter, setFilter] = useState<'ALL' | 'UNREAD'>('ALL')
-  const [readIds, setReadIds] = useState<Set<string>>(new Set())
 
-  const notifications = mockNotifications
-    .filter(n => {
-      if (filter === 'UNREAD') return !n.is_read && !readIds.has(n.id)
-      return true
-    })
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+  const { notifications: allNotifications, unreadCount, markAsRead, markAllRead } = useNotificationsData(user?.id)
 
-  const unreadCount = mockNotifications.filter(n => !n.is_read && !readIds.has(n.id)).length
+  const notifications = allNotifications.filter(n => {
+    if (filter === 'UNREAD') return !n.is_read
+    return true
+  })
 
-  const markAsRead = (id: string) => setReadIds(prev => new Set([...prev, id]))
-  const markAllRead = () => setReadIds(new Set(mockNotifications.map(n => n.id)))
-
-  const handleClick = (n: typeof notifications[0]) => {
-    markAsRead(n.id)
+  const handleClick = async (n: typeof notifications[0]) => {
+    await markAsRead(n.id)
     if (n.related_type === 'finding') navigate(`/findings/${n.related_id}`)
     else if (n.related_type === 'visit') navigate(`/visits/${n.related_id}`)
   }
@@ -73,7 +67,7 @@ export default function NotificationsPage() {
           ) : (
             <div className="divide-y divide-gray-100">
               {notifications.map(n => {
-                const isUnread = !n.is_read && !readIds.has(n.id)
+                const isUnread = !n.is_read
                 const typeInfo = typeIcons[n.type] || { icon: Bell, color: 'text-gray-500' }
                 const Icon = typeInfo.icon
 

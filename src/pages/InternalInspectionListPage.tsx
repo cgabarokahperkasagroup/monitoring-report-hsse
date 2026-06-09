@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ClipboardCheck, Search, ChevronUp, ChevronDown, Eye, AlertTriangle, CheckCircle2, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { mockInternalInspections } from '@/data/mockData'
+import { useInternalInspectionsData } from '@/hooks/useInternalInspectionsData'
 import { useShips } from '@/hooks/useShips'
 import { INTERNAL_INSPECTION_STATUS_OPTIONS, INSPECTION_RESULT_OPTIONS } from '@/data/masterOptions'
 import { formatDateShort, getInspectionResultLabel, getInspectionResultColor, getStatusLabel, getStatusColor } from '@/utils'
@@ -14,6 +14,7 @@ type SortDir = 'asc' | 'desc'
 
 export default function InternalInspectionListPage() {
   const navigate = useNavigate()
+  const { inspections } = useInternalInspectionsData()
   const { ships } = useShips()
   const [search, setSearch] = useState('')
   const [vesselFilter, setVesselFilter] = useState('')
@@ -34,10 +35,10 @@ export default function InternalInspectionListPage() {
       ? sortDir === 'asc' ? <ChevronUp size={13} className="text-[#1B3A6B]" /> : <ChevronDown size={13} className="text-[#1B3A6B]" />
       : <ChevronDown size={13} className="text-gray-300" />
 
-  const filtered = mockInternalInspections.filter(i => {
+  const filtered = inspections.filter(i => {
     const q = search.toLowerCase()
     const matchSearch = !q || i.reference_no.toLowerCase().includes(q) || (i.vessel?.name || '').toLowerCase().includes(q) || i.lead_inspector.toLowerCase().includes(q)
-    const matchVessel = !vesselFilter || i.vessel_id === vesselFilter
+    const matchVessel = !vesselFilter || String(i.vessel?.id ?? '') === vesselFilter
     const matchStatus = !statusFilter || i.status === statusFilter
     const matchResult = !resultFilter || i.result === resultFilter
     return matchSearch && matchVessel && matchStatus && matchResult
@@ -55,10 +56,10 @@ export default function InternalInspectionListPage() {
 
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
-  const totalInspections = mockInternalInspections.length
-  const approved = mockInternalInspections.filter(i => i.status === 'APPROVED').length
-  const satisfactory = mockInternalInspections.filter(i => i.result === 'SATISFACTORY').length
-  const totalFindings = mockInternalInspections.reduce((s, i) => s + i.items_deficient, 0)
+  const totalInspections = inspections.length
+  const approved = inspections.filter(i => i.status === 'APPROVED').length
+  const satisfactory = inspections.filter(i => i.result === 'SATISFACTORY').length
+  const totalFindings = inspections.reduce((s, i) => s + i.items_deficient, 0)
 
   return (
     <div className="flex flex-col gap-5">

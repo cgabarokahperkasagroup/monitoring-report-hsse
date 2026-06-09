@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Pagination } from '@/components/ui/pagination'
 import { FilterChips } from '@/components/ui/filter-chips'
-import { mockVisits } from '@/data/mockData'
+import { useVisitsData } from '@/hooks/useVisitsData'
 import { VISIT_TYPE_OPTIONS, VISIT_STATUS_OPTIONS } from '@/data/masterOptions'
 import { useAuthStore } from '@/stores/authStore'
 import { getVisitTypeLabel, getVisitTypeColor, getStatusLabel, getStatusColor, formatDateShort } from '@/utils'
@@ -30,6 +30,7 @@ const PAGE_SIZE = 10
 export default function VisitsPage() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
+  const { visits, loading } = useVisitsData()
   const [search, setSearch] = useState('')
   const [filterType, setFilterType] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
@@ -47,7 +48,7 @@ export default function VisitsPage() {
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase()
-    return mockVisits.filter(v => {
+    return visits.filter(v => {
       const matchSearch = !q ||
         v.reference_no.toLowerCase().includes(q) ||
         (v.vessel?.name?.toLowerCase().includes(q) ?? false) ||
@@ -64,7 +65,7 @@ export default function VisitsPage() {
       if (sortField === 'findings_count') { av = a.findings_count ?? 0; bv = b.findings_count ?? 0 }
       return sortDir === 'asc' ? (av < bv ? -1 : av > bv ? 1 : 0) : (av > bv ? -1 : av < bv ? 1 : 0)
     })
-  }, [search, filterType, filterStatus, sortField, sortDir])
+  }, [visits, search, filterType, filterStatus, sortField, sortDir])
 
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
@@ -151,10 +152,10 @@ export default function VisitsPage() {
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: 'Total', count: mockVisits.length, color: 'text-[#1B3A6B]', bg: 'bg-blue-50', border: 'border-blue-100' },
-          { label: 'Approved', count: mockVisits.filter(v => v.status === 'APPROVED').length, color: 'text-green-700', bg: 'bg-green-50', border: 'border-green-100' },
-          { label: 'Submitted', count: mockVisits.filter(v => v.status === 'SUBMITTED').length, color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-100' },
-          { label: 'Draft', count: mockVisits.filter(v => v.status === 'DRAFT').length, color: 'text-gray-700', bg: 'bg-gray-50', border: 'border-gray-200' },
+          { label: 'Total', count: visits.length, color: 'text-[#1B3A6B]', bg: 'bg-blue-50', border: 'border-blue-100' },
+          { label: 'Approved', count: visits.filter(v => v.status === 'APPROVED').length, color: 'text-green-700', bg: 'bg-green-50', border: 'border-green-100' },
+          { label: 'Submitted', count: visits.filter(v => v.status === 'SUBMITTED').length, color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-100' },
+          { label: 'Draft', count: visits.filter(v => v.status === 'DRAFT').length, color: 'text-gray-700', bg: 'bg-gray-50', border: 'border-gray-200' },
         ].map(s => (
           <div key={s.label} className={`${s.bg} rounded-xl p-4 border ${s.border}`}>
             <p className="text-xs text-gray-500">{s.label}</p>

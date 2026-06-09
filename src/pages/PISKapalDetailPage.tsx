@@ -6,11 +6,11 @@ import {
   CheckCircle2, Receipt,
 } from 'lucide-react'
 import {
-  usePISKapalStore,
+  usePISFindingsData,
   getPISStatusLabel, getPISStatusColor,
   getPISTemuanLabel, getPISTemuanColor,
   getPISPerusahaanColor,
-} from '@/stores/pisKapalStore'
+} from '@/hooks/usePISFindingsData'
 import { Modal } from '@/components/ui/modal'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/toast'
@@ -142,16 +142,23 @@ function AddProgressModal({
 // ── Closing Form Modal ────────────────────────────────────────────────────────
 
 function ClosingFormModal({
-  open, onClose, onSave,
+  open, onClose, onSave, initialValues,
 }: {
   open: boolean
   onClose: () => void
   onSave: (data: { actual_closed_date: string; summary: string; catatan: string; submitted_by: string }) => void
+  initialValues?: { actual_closed_date: string; summary: string; submitted_by: string }
 }) {
-  const [form, setForm] = useState({ actual_closed_date: '', summary: '', catatan: '', submitted_by: '' })
+  const [form, setForm] = useState({
+    actual_closed_date: initialValues?.actual_closed_date ?? '',
+    summary: initialValues?.summary ?? '',
+    catatan: '',
+    submitted_by: initialValues?.submitted_by ?? '',
+  })
   const s = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }))
 
   const valid = form.actual_closed_date && form.summary.trim() && form.submitted_by.trim()
+  const hasAutoFill = !!(initialValues?.actual_closed_date || initialValues?.summary || initialValues?.submitted_by)
 
   return (
     <Modal open={open} onClose={onClose} title="Ajukan Closing Finding" size="lg"
@@ -166,6 +173,11 @@ function ClosingFormModal({
         <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
           Setelah diajukan, status akan berubah menjadi <strong>Process Approval</strong>. Atasan akan mereview sebelum closing disetujui.
         </div>
+        {hasAutoFill && (
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
+            Form diisi otomatis dari <strong>progress terakhir</strong>. Periksa dan sesuaikan jika perlu.
+          </div>
+        )}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Tanggal Actual Closed <span className="text-red-500">*</span></label>
           <input
@@ -265,7 +277,7 @@ export default function PISKapalDetailPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const backTo = (location.state as { from?: string } | null)?.from ?? '/pis-findings'
-  const { getFindingById, addProgress, submitClosing, approveClosing, rejectClosing } = usePISKapalStore()
+  const { getFindingById, addProgress, submitClosing, approveClosing, rejectClosing } = usePISFindingsData()
   const { success, error: showError } = useToast()
 
   const [showAddProgress, setShowAddProgress] = useState(false)
@@ -287,6 +299,15 @@ export default function PISKapalDetailPage() {
 
   const progressEntries = finding.progress_entries ?? []
   const sortedEntries = timelineOrder === 'newest' ? [...progressEntries].reverse() : [...progressEntries]
+
+  // Progress terakhir berdasarkan action_date terbaru
+  const lastProgress = progressEntries.length > 0
+    ? [...progressEntries].sort((a, b) => b.action_date.localeCompare(a.action_date))[0]
+    : null
+
+  const closingInitialValues = lastProgress
+    ? { actual_closed_date: lastProgress.action_date, summary: lastProgress.description, submitted_by: lastProgress.action_by }
+    : undefined
 
   const canAddProgress = ['OPEN', 'ON_PROSES', 'REJECTED'].includes(finding.status)
   const canSubmitClosing = finding.status === 'ON_PROSES' && progressEntries.length > 0
@@ -622,18 +643,22 @@ export default function PISKapalDetailPage() {
       <AddProgressModal
         open={showAddProgress}
         onClose={() => setShowAddProgress(false)}
-        onSave={(data) => {
-          addProgress(finding.id, data)
+        onSave={async (data) => {
+          const result = await addProgress(finding.id, data)
+          if (result?.error) return
           setShowAddProgress(false)
           success('Progress ditambahkan', 'Status finding diperbarui')
         }}
       />
 
       <ClosingFormModal
+        key={showClosingForm ? 'open' : 'closed'}
         open={showClosingForm}
         onClose={() => setShowClosingForm(false)}
-        onSave={(data) => {
-          submitClosing(finding.id, data)
+        initialValues={closingInitialValues}
+        onSave={async (data) => {
+          const result = await submitClosing(finding.id, data)
+          if (result?.error) return
           setShowClosingForm(false)
           success('Closing diajukan', 'Menunggu persetujuan atasan')
         }}
@@ -644,13 +669,13 @@ export default function PISKapalDetailPage() {
           open={!!reviewDecision}
           decision={reviewDecision}
           onClose={() => setReviewDecision(null)}
-          onConfirm={(notes) => {
+          onConfirm={async (notes) => {
             if (reviewDecision === 'APPROVED') {
-              approveClosing(finding.id)
-              success('Closing disetujui', 'Finding resmi ditutup')
+              const result = await approveClosing(finding.id)
+              if (!result?.error) success('Closing disetujui', 'Finding resmi ditutup')
             } else {
-              rejectClosing(finding.id, notes)
-              showError('Closing ditolak', 'Finding kembali ke status On Proses')
+              const result = await rejectClosing(finding.id, notes)
+              if (!result?.error) showError('Closing ditolak', 'Finding kembali ke status On Proses')
             }
             setReviewDecision(null)
           }}

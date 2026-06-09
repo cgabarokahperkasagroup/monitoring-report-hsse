@@ -1,5 +1,5 @@
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Plus, CheckCircle, XCircle, AlertTriangle, Star, Users, Calendar, Building2, Printer, ClipboardList, ChevronDown, ChevronUp, ImagePlus, X, Image } from 'lucide-react'
+import { ArrowLeft, Plus, CheckCircle, XCircle, AlertTriangle, Star, Users, Calendar, Building2, Printer, ClipboardList, ChevronDown, ChevronUp, ImagePlus, X, Image, Send } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -7,7 +7,8 @@ import { Badge } from '@/components/ui/badge'
 import { Modal } from '@/components/ui/modal'
 import { Textarea, Input, Select } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
-import { mockVisits, mockFindings, mockFindingCategories, mockUsers } from '@/data/mockData'
+import { supabase } from '@/lib/supabase'
+import { useVisit } from '@/hooks/useVisitsData'
 import { useAuthStore } from '@/stores/authStore'
 import {
   getVisitTypeLabel, getVisitTypeColor, getStatusLabel, getStatusColor,
@@ -28,48 +29,67 @@ export default function VisitDetailPage() {
   const [showAddFinding, setShowAddFinding] = useState(false)
   const [showApproveModal, setShowApproveModal] = useState(false)
   const [showRejectModal, setShowRejectModal] = useState(false)
+  const [showSubmitFinalModal, setShowSubmitFinalModal] = useState(false)
   const [rejectionNotes, setRejectionNotes] = useState('')
   const [checklistOpen, setChecklistOpen] = useState(false)
 
-  const [visit, setVisit] = useState(() => mockVisits.find(v => v.id === id))
-  const [findings, setFindings] = useState(() => mockFindings.filter(f => f.visit_id === id))
+  const { visit, findings, loading, error: visitError, approveVisit, rejectVisit, submitVisit, addFinding } = useVisit(id)
 
   // ── Inspection checklist state ───────────────────────────────────────────────
   const storageKey = id ? inspectionStorageKey(id) : ''
   const [inspection, setInspection] = useState<VesselInspectionData>(() => {
-    const defaults = defaultInspectionData(visit?.agenda, visit?.summary)
-    if (!id) return defaults
+    if (!id) return defaultInspectionData(undefined, undefined)
     const stored = sessionStorage.getItem(inspectionStorageKey(id))
     if (stored) {
       try {
         const parsed = JSON.parse(stored)
         return {
-          ...defaults,
+          ...defaultInspectionData(undefined, undefined),
           ...parsed,
-          // backward-compat: old stored data may not have photo arrays
           visitPhotos: Array.isArray(parsed.visitPhotos) ? parsed.visitPhotos : [],
           attendancePhotos: Array.isArray(parsed.attendancePhotos) ? parsed.attendancePhotos : [],
         }
       } catch { /* ignore */ }
     }
-    return defaults
+    return defaultInspectionData(undefined, undefined)
   })
+
+  // Seed inspection defaults from visit once loaded (only if no sessionStorage entry)
+  useEffect(() => {
+    if (!visit || !id) return
+    const stored = sessionStorage.getItem(inspectionStorageKey(id))
+    if (!stored) {
+      setInspection(defaultInspectionData(visit.agenda, visit.summary))
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visit?.id])
 
   // Auto-save to sessionStorage whenever checklist data changes
   useEffect(() => {
     if (storageKey) sessionStorage.setItem(storageKey, JSON.stringify(inspection))
   }, [inspection, storageKey])
 
+  if (loading) return (
+    <div className="flex items-center justify-center h-64">
+      <div className="w-8 h-8 border-4 border-[#1B3A6B] border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+
   if (!visit) return (
     <div className="flex flex-col items-center justify-center h-64 gap-3">
       <AlertTriangle size={40} className="text-gray-400" />
       <p className="text-gray-500 text-sm">Kunjungan tidak ditemukan</p>
+      {visitError && <p className="text-xs text-red-500 max-w-sm text-center">{visitError}</p>}
       <Button variant="outline" size="sm" onClick={() => navigate(-1)}>Kembali</Button>
     </div>
   )
 
   const canApprove = user && ['SUPER_ADMIN', 'ADMIN', 'MANAGEMENT', 'OP_HEAD', 'SITE_MGR'].includes(user.role) && visit.status === 'SUBMITTED'
-  const canAddFinding = user && ['SUPER_ADMIN', 'ADMIN', 'MANAGEMENT', 'OP_HEAD', 'SITE_MGR', 'PIC'].includes(user.role) && visit.status === 'APPROVED'
+  // Bisa tambah temuan saat kunjungan aktif (APPROVED tapi belum disetujui final / approved_by belum di-set)
+  const canAddFinding = user && ['SUPER_ADMIN', 'ADMIN', 'MANAGEMENT', 'OP_HEAD', 'SITE_MGR', 'PIC'].includes(user.role) && visit.status === 'APPROVED' && !visit.approved_by
+  // Creator atau admin bisa submit laporan akhir setelah kunjungan selesai
+  const canSubmitFinal = visit.status === 'APPROVED' && !visit.approved_by && user &&
+    (visit.created_by === user.id || ['SUPER_ADMIN', 'ADMIN', 'MANAGEMENT', 'OP_HEAD', 'SITE_MGR'].includes(user.role))
   const isVesselReport = visit.visit_type === 'VESSEL_VISIT' || visit.visit_type === 'OWNER_VISIT'
 
   // helpers for updating inspection state
@@ -116,6 +136,11 @@ export default function VisitDetailPage() {
           {isVesselReport && (
             <Button variant="outline" size="sm" onClick={handlePrint}>
               <Printer size={15} /> Cetak Laporan
+            </Button>
+          )}
+          {canSubmitFinal && (
+            <Button variant="outline" size="sm" onClick={() => setShowSubmitFinalModal(true)}>
+              <Send size={15} /> Submit Laporan Akhir
             </Button>
           )}
           {canApprove && (
@@ -435,8 +460,8 @@ export default function VisitDetailPage() {
             <div className="flex flex-col items-center py-10 text-gray-400">
               <AlertTriangle size={32} className="mb-2 opacity-40" />
               <p className="text-sm">Belum ada temuan untuk kunjungan ini</p>
-              {visit.status !== 'APPROVED' && (
-                <p className="text-xs mt-1">Kunjungan harus disetujui terlebih dahulu</p>
+              {visit.status === 'DRAFT' && (
+                <p className="text-xs mt-1">Kunjungan masih Draft – klik "Mulai Kunjungan" untuk mengaktifkan</p>
               )}
             </div>
           ) : (
@@ -512,13 +537,31 @@ export default function VisitDetailPage() {
       </Card>
 
       {/* ── Modals ─────────────────────────────────────────────────────────────── */}
+      <Modal open={showSubmitFinalModal} onClose={() => setShowSubmitFinalModal(false)} title="Submit Laporan Akhir" size="sm"
+        footer={<>
+          <Button variant="ghost" onClick={() => setShowSubmitFinalModal(false)}>Batal</Button>
+          <Button onClick={async () => {
+            const result = await submitVisit()
+            setShowSubmitFinalModal(false)
+            if (!result?.error) success('Laporan disubmit', 'Atasan akan menerima notifikasi untuk persetujuan akhir')
+          }}>
+            <Send size={15} /> Submit Laporan
+          </Button>
+        </>}
+      >
+        <p className="text-sm text-gray-600">
+          Kunjungan <strong>{visit.reference_no}</strong> akan disubmit untuk persetujuan akhir oleh atasan.
+          Setelah disubmit, temuan tidak dapat ditambahkan lagi.
+        </p>
+      </Modal>
+
       <Modal open={showApproveModal} onClose={() => setShowApproveModal(false)} title="Setujui Laporan Kunjungan" size="sm"
         footer={<>
           <Button variant="ghost" onClick={() => setShowApproveModal(false)}>Batal</Button>
-          <Button onClick={() => {
-            setVisit(v => v ? { ...v, status: 'APPROVED', approved_by: user?.id, approved_by_user: user ?? undefined, approved_at: new Date().toISOString() } : v)
+          <Button onClick={async () => {
+            const result = await approveVisit(user!.id)
             setShowApproveModal(false)
-            success('Laporan disetujui', 'Status kunjungan berubah menjadi APPROVED')
+            if (!result?.error) success('Laporan disetujui', 'Persetujuan akhir kunjungan berhasil dicatat')
           }}>
             <CheckCircle size={15} /> Setujui
           </Button>
@@ -526,18 +569,17 @@ export default function VisitDetailPage() {
       >
         <p className="text-sm text-gray-600">
           Apakah Anda yakin ingin menyetujui laporan kunjungan <strong>{visit.reference_no}</strong>?
-          Setelah disetujui, temuan dapat ditambahkan.
         </p>
       </Modal>
 
       <Modal open={showRejectModal} onClose={() => setShowRejectModal(false)} title="Tolak Laporan Kunjungan" size="sm"
         footer={<>
           <Button variant="ghost" onClick={() => setShowRejectModal(false)}>Batal</Button>
-          <Button variant="danger" onClick={() => {
-            setVisit(v => v ? { ...v, status: 'REJECTED', rejection_notes: rejectionNotes } : v)
+          <Button variant="danger" onClick={async () => {
+            const result = await rejectVisit(rejectionNotes)
             setShowRejectModal(false)
             setRejectionNotes('')
-            error('Laporan ditolak', 'Laporan dikembalikan dengan catatan')
+            if (!result?.error) error('Laporan ditolak', 'Laporan dikembalikan dengan catatan')
           }}>
             <XCircle size={15} /> Tolak
           </Button>
@@ -552,8 +594,19 @@ export default function VisitDetailPage() {
       <AddFindingModal
         open={showAddFinding}
         onClose={() => setShowAddFinding(false)}
-        visitId={id!}
-        onSave={() => { setShowAddFinding(false); success('Temuan ditambahkan', 'PIC akan mendapat notifikasi penugasan') }}
+        onSave={async (formData) => {
+          if (!user) return
+          const result = await addFinding({
+            ...formData,
+            business_unit_id: visit.business_unit_id,
+            source_type: visit.visit_type,
+            is_owner_finding: visit.visit_type === 'OWNER_VISIT',
+            created_by: user.id,
+          })
+          if (result?.error) { error('Gagal menyimpan', result.error ?? ''); return }
+          setShowAddFinding(false)
+          success('Temuan ditambahkan', 'PIC akan mendapat notifikasi penugasan')
+        }}
       />
     </div>
   )
@@ -698,19 +751,36 @@ function PhotoPicker({
 }
 
 // ─── Add Finding Modal ─────────────────────────────────────────────────────────
-function AddFindingModal({ open, onClose, visitId, onSave }: {
-  open: boolean; onClose: () => void; visitId: string; onSave: () => void
+function AddFindingModal({ open, onClose, onSave }: {
+  open: boolean
+  onClose: () => void
+  onSave: (data: { title: string; description: string; category: string; priority: string; assigned_to: string; target_close_date: string }) => Promise<void>
 }) {
   const [form, setForm] = useState({
     title: '', description: '', category: '', priority: 'MEDIUM', assigned_to: '', target_close_date: ''
   })
+  const [saving, setSaving] = useState(false)
+  const [findingCategories, setFindingCategories] = useState<Array<{id: string, name: string}>>([])
+  const [picUsers, setPicUsers] = useState<Array<{id: string, full_name: string}>>([])
+  useEffect(() => {
+    supabase.from('finding_categories').select('id, name').eq('is_active', true)
+      .then(({ data }) => { if (data) setFindingCategories(data as Array<{id: string, name: string}>) })
+    supabase.from('users').select('id, full_name').in('role', ['PIC', 'OP_HEAD', 'SITE_MGR']).eq('is_active', true)
+      .then(({ data }) => { if (data) setPicUsers(data as Array<{id: string, full_name: string}>) })
+  }, [])
   const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }))
 
   return (
     <Modal open={open} onClose={onClose} title="Tambah Temuan Baru" size="lg"
       footer={<>
         <Button variant="ghost" onClick={onClose}>Batal</Button>
-        <Button onClick={onSave}>Simpan Temuan</Button>
+        <Button loading={saving} onClick={async () => {
+          if (form.title && form.description && form.category && form.target_close_date) {
+            setSaving(true)
+            await onSave(form)
+            setSaving(false)
+          }
+        }}>Simpan Temuan</Button>
       </>}
     >
       <div className="flex flex-col gap-4">
@@ -718,7 +788,7 @@ function AddFindingModal({ open, onClose, visitId, onSave }: {
         <Textarea label="Deskripsi Detail" required value={form.description} onChange={e => set('description', e.target.value)} placeholder="Penjelasan lengkap temuan..." rows={4} />
         <div className="grid grid-cols-2 gap-4">
           <Select searchable label="Kategori" required value={form.category} onChange={e => set('category', e.target.value)} placeholder="Pilih kategori"
-            options={mockFindingCategories.map(c => ({ value: c.name, label: c.name }))} />
+            options={findingCategories.map(c => ({ value: c.name, label: c.name }))} />
           <Select label="Tingkat Prioritas" required value={form.priority} onChange={e => set('priority', e.target.value)}
             options={[
               { value: 'CRITICAL', label: 'Critical – Kritis' },
@@ -729,7 +799,7 @@ function AddFindingModal({ open, onClose, visitId, onSave }: {
         </div>
         <div className="grid grid-cols-2 gap-4">
           <Select searchable label="PIC (Penanggung Jawab)" value={form.assigned_to} onChange={e => set('assigned_to', e.target.value)} placeholder="Pilih PIC"
-            options={mockUsers.filter(u => ['PIC', 'OP_HEAD', 'SITE_MGR'].includes(u.role)).map(u => ({ value: u.id, label: u.full_name }))} />
+            options={picUsers.map(u => ({ value: u.id, label: u.full_name }))} />
           <Input type="date" label="Target Tanggal Closing" required value={form.target_close_date} onChange={e => set('target_close_date', e.target.value)} />
         </div>
         <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">

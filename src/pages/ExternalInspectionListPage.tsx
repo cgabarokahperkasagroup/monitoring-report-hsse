@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Shield, Search, ChevronUp, ChevronDown, Eye, Calendar, AlertCircle, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { mockExternalInspections, mockVessels, mockExternalInspectionTypes } from '@/data/mockData'
+import { supabase } from '@/lib/supabase'
+import { useExternalInspectionsData } from '@/hooks/useExternalInspectionsData'
+import { useShips, shipOptions } from '@/hooks/useShips'
 import { EXTERNAL_INSPECTION_STATUS_OPTIONS, INSPECTION_RESULT_OPTIONS } from '@/data/masterOptions'
 import {
   formatDateShort, getInspectionResultLabel, getInspectionResultColor,
@@ -10,7 +12,6 @@ import {
 } from '@/utils'
 import { Pagination } from '@/components/ui/pagination'
 import { EmptyState } from '@/components/ui/empty-state'
-import type { ExternalInspectionType } from '@/types'
 
 type SortField = 'inspection_date' | 'vessel' | 'inspection_type' | 'result' | 'total_observations'
 type SortDir = 'asc' | 'desc'
@@ -48,14 +49,24 @@ export default function ExternalInspectionListPage() {
       ? sortDir === 'asc' ? <ChevronUp size={13} className="text-[#1B3A6B]" /> : <ChevronDown size={13} className="text-[#1B3A6B]" />
       : <ChevronDown size={13} className="text-gray-300" />
 
-  const filtered = mockExternalInspections.filter(i => {
+  const [inspectionTypes, setInspectionTypes] = useState<Array<{code: string, label: string}>>([])
+  useEffect(() => {
+    supabase.from('external_inspection_types').select('code, label').eq('is_active', true)
+      .then(({ data }) => { if (data) setInspectionTypes(data as Array<{code: string, label: string}>) })
+  }, [])
+
+  const { inspections } = useExternalInspectionsData()
+  const { ships } = useShips()
+  const vesselOptions = shipOptions(ships)
+
+  const filtered = inspections.filter(i => {
     const q = search.toLowerCase()
     const matchSearch = !q ||
       i.reference_no.toLowerCase().includes(q) ||
       (i.vessel?.name || '').toLowerCase().includes(q) ||
       i.inspecting_body.toLowerCase().includes(q) ||
       (i.lead_inspector || '').toLowerCase().includes(q)
-    const matchVessel = !vesselFilter || i.vessel_id === vesselFilter
+    const matchVessel = !vesselFilter || String(i.vessel?.id ?? '') === vesselFilter
     const matchType = !typeFilter || i.inspection_type === typeFilter
     const matchStatus = !statusFilter || i.status === statusFilter
     const matchResult = !resultFilter || i.result === resultFilter
@@ -74,13 +85,13 @@ export default function ExternalInspectionListPage() {
 
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
-  const totalInspections = mockExternalInspections.length
-  const completed = mockExternalInspections.filter(i => i.status === 'COMPLETED').length
-  const satisfactory = mockExternalInspections.filter(i => i.result === 'SATISFACTORY').length
-  const scheduled = mockExternalInspections.filter(i => i.status === 'SCHEDULED').length
+  const totalInspections = inspections.length
+  const completed = inspections.filter(i => i.status === 'COMPLETED').length
+  const satisfactory = inspections.filter(i => i.result === 'SATISFACTORY').length
+  const scheduled = inspections.filter(i => i.status === 'SCHEDULED').length
 
   const today = new Date()
-  const expiringSoon = mockExternalInspections.filter(i => {
+  const expiringSoon = inspections.filter(i => {
     if (!i.validity_date) return false
     const diff = (new Date(i.validity_date).getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
     return diff >= 0 && diff <= 90
@@ -132,13 +143,13 @@ export default function ExternalInspectionListPage() {
           <select value={vesselFilter} onChange={e => { setVesselFilter(e.target.value); setPage(1) }}
             className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none cursor-pointer">
             <option value="">Semua Kapal</option>
-            {mockVessels.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+            {vesselOptions.map(v => <option key={v.value} value={v.value}>{v.label}</option>)}
           </select>
           <select value={typeFilter} onChange={e => { setTypeFilter(e.target.value); setPage(1) }}
             className="px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none cursor-pointer">
             <option value="">Semua Jenis</option>
-            {mockExternalInspectionTypes.filter(t => t.is_active).map(t => (
-              <option key={t.value} value={t.value}>{t.label}</option>
+            {inspectionTypes.map(t => (
+              <option key={t.code} value={t.code}>{t.label}</option>
             ))}
           </select>
           <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1) }}

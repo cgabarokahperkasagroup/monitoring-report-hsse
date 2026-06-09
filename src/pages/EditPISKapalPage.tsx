@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Save, AlertTriangle } from 'lucide-react'
-import { usePISKapalStore } from '@/stores/pisKapalStore'
-import { mockPISPerusahaan, mockPISTemuanTypes, mockPISKategori, mockUsers } from '@/data/mockData'
+import { usePISFindingsData } from '@/hooks/usePISFindingsData'
+import { supabase } from '@/lib/supabase'
 import { useShips } from '@/hooks/useShips'
 import { PIS_FINDING_STATUS_OPTIONS } from '@/data/masterOptions'
 import { useToast } from '@/components/ui/toast'
@@ -91,16 +91,31 @@ function SectionCard({ title, children }: { title: string; children: React.React
   )
 }
 
-const opHeadOptions = mockUsers.filter(u => u.role === 'OP_HEAD' && u.is_active)
-const picOptions = mockUsers.filter(u => ['OP_HEAD', 'STAFF_HSSE', 'HEAD_HSSE', 'PIC'].includes(u.role) && u.is_active)
-
 // ── Inner form (rendered only when finding is defined) ────────────────────────
 
 function EditForm({ findingId }: { findingId: string }) {
   const navigate = useNavigate()
-  const { getFindingById, updateFinding } = usePISKapalStore()
+  const { getFindingById, updateFinding } = usePISFindingsData()
   const { success } = useToast()
   const { ships } = useShips()
+
+  const [pisPerusahaan, setPisPerusahaan] = useState<Array<{id: string, code: string}>>([])
+  const [pisTemuanTypes, setPisTemuanTypes] = useState<Array<{id: string, code: string, label: string}>>([])
+  const [pisKategori, setPisKategori] = useState<Array<{id: string, name: string}>>([])
+  const [opHeadOptions, setOpHeadOptions] = useState<Array<{id: string, full_name: string}>>([])
+  const [picOptions, setPicOptions] = useState<Array<{id: string, full_name: string}>>([])
+  useEffect(() => {
+    supabase.from('pis_perusahaan').select('id, code').eq('is_active', true)
+      .then(({ data }) => { if (data) setPisPerusahaan(data as Array<{id: string, code: string}>) })
+    supabase.from('pis_finding_types').select('id, code, label').eq('is_active', true)
+      .then(({ data }) => { if (data) setPisTemuanTypes(data as Array<{id: string, code: string, label: string}>) })
+    supabase.from('pis_categories').select('id, name').eq('is_active', true)
+      .then(({ data }) => { if (data) setPisKategori(data as Array<{id: string, name: string}>) })
+    supabase.from('users').select('id, full_name').eq('role', 'OP_HEAD').eq('is_active', true)
+      .then(({ data }) => { if (data) setOpHeadOptions(data as Array<{id: string, full_name: string}>) })
+    supabase.from('users').select('id, full_name').in('role', ['OP_HEAD', 'STAFF_HSSE', 'HEAD_HSSE', 'PIC']).eq('is_active', true)
+      .then(({ data }) => { if (data) setPicOptions(data as Array<{id: string, full_name: string}>) })
+  }, [])
 
   const finding = getFindingById(findingId)!
 
@@ -150,11 +165,11 @@ function EditForm({ findingId }: { findingId: string }) {
     return Object.keys(e).length === 0
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!validate()) return
 
-    updateFinding(finding.id, {
+    await updateFinding(finding.id, {
       no: form.no ? parseInt(form.no) : finding.no,
       perusahaan: form.perusahaan as PISPerusahaan,
       deskripsi: form.deskripsi.trim(),
@@ -198,7 +213,7 @@ function EditForm({ findingId }: { findingId: string }) {
             <Label required>Perusahaan</Label>
             <Select value={form.perusahaan} onChange={e => set('perusahaan', e.target.value)}>
               <option value="">-- Pilih --</option>
-              {mockPISPerusahaan.filter(p => p.is_active).map(p => <option key={p.id} value={p.kode}>{p.kode}</option>)}
+              {pisPerusahaan.map(p => <option key={p.id} value={p.code}>{p.code}</option>)}
             </Select>
             {err('perusahaan')}
           </div>
@@ -206,7 +221,7 @@ function EditForm({ findingId }: { findingId: string }) {
             <Label required>Jenis Temuan</Label>
             <Select value={form.temuan} onChange={e => set('temuan', e.target.value)}>
               <option value="">-- Pilih --</option>
-              {mockPISTemuanTypes.filter(t => t.is_active).map(t => <option key={t.id} value={t.value}>{t.label}</option>)}
+              {pisTemuanTypes.map(t => <option key={t.id} value={t.code}>{t.label}</option>)}
             </Select>
             {err('temuan')}
           </div>
@@ -222,7 +237,7 @@ function EditForm({ findingId }: { findingId: string }) {
             <Label required>Kategori</Label>
             <Select value={form.category} onChange={e => set('category', e.target.value)}>
               <option value="">-- Pilih Kategori --</option>
-              {mockPISKategori.filter(k => k.is_active).map(k => <option key={k.id} value={k.nama}>{k.nama}</option>)}
+              {pisKategori.map(k => <option key={k.id} value={k.name}>{k.name}</option>)}
             </Select>
             {err('category')}
           </div>
@@ -384,7 +399,7 @@ function EditForm({ findingId }: { findingId: string }) {
 export default function EditPISKapalPage() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { getFindingById } = usePISKapalStore()
+  const { getFindingById } = usePISFindingsData()
 
   const finding = getFindingById(id ?? '')
 

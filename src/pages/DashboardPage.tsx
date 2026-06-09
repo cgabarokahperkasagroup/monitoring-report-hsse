@@ -15,21 +15,22 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { SkeletonCard, SkeletonChart, Skeleton } from '@/components/ui/skeleton'
 import {
-  mockDashboardChartData, mockFindings, mockVisits, mockBusinessUnits,
-  mockInternalInspections, mockExternalInspections, mockVessels, mockFleets
-} from '@/data/mockData'
-import {
   getStatusColor, getStatusLabel, getPriorityColor, getPriorityLabel,
   formatDateShort, getExternalInspectionTypeLabel, getExternalInspectionTypeColor,
   getInspectionResultLabel, getInspectionResultColor
 } from '@/utils'
-import type { FindingPriority, PISFindingStatus } from '@/types'
+import type { FindingPriority, PISFindingStatus, BusinessUnit, Fleet, Vessel } from '@/types'
 import {
-  usePISKapalStore,
+  usePISFindingsData,
   getPISStatusLabel, getPISStatusColor,
   getPISTemuanLabel, getPISTemuanColor,
   getPISPerusahaanColor,
-} from '@/stores/pisKapalStore'
+} from '@/hooks/usePISFindingsData'
+import { useVisitsData } from '@/hooks/useVisitsData'
+import { useFindingsData } from '@/hooks/useFindingsData'
+import { useInternalInspectionsData } from '@/hooks/useInternalInspectionsData'
+import { useExternalInspectionsData } from '@/hooks/useExternalInspectionsData'
+import { supabase } from '@/lib/supabase'
 
 // ─── Pure helper ─────────────────────────────────────────────────────────────
 
@@ -183,11 +184,23 @@ function MiniStat({ label, value, color }: { label: string; value: string | numb
 export default function DashboardPage() {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<DashTab>('visit')
-  const [isLoading, setIsLoading] = useState(true)
+  const { visits: mockVisits, loading: visitsLoading } = useVisitsData()
+  const { findings: mockFindings, loading: findingsLoading } = useFindingsData()
+  const { inspections: mockInternalInspections, loading: internalLoading } = useInternalInspectionsData()
+  const { inspections: mockExternalInspections, loading: externalLoading } = useExternalInspectionsData()
+  const isLoading = visitsLoading || findingsLoading || internalLoading || externalLoading
+
+  const [mockBusinessUnits, setMockBusinessUnits] = useState<BusinessUnit[]>([])
+  const [mockFleets, setMockFleets] = useState<Fleet[]>([])
+  const [mockVessels, setMockVessels] = useState<Vessel[]>([])
 
   useEffect(() => {
-    const t = setTimeout(() => setIsLoading(false), 700)
-    return () => clearTimeout(t)
+    supabase.from('business_units').select('id, name, code, is_active, created_at').eq('is_active', true)
+      .then(({ data }) => { if (data) setMockBusinessUnits(data as BusinessUnit[]) })
+    supabase.from('fleets').select('id, name, business_unit_id, op_head_user_id, visit_frequency, is_active, created_at').eq('is_active', true)
+      .then(({ data }) => { if (data) setMockFleets(data as Fleet[]) })
+    supabase.from('mh_vessels').select('id, name, imo_number, vessel_type, fleet_id, business_unit_id, is_active, created_at').eq('is_active', true)
+      .then(({ data }) => { if (data) setMockVessels(data as Vessel[]) })
   }, [])
 
   // ── Filter state per tab ───────────────────────────────────────────────────
@@ -218,7 +231,7 @@ export default function DashboardPage() {
   const [nvYear, setNvYear]             = useState('all')
 
   // ── PIS store ─────────────────────────────────────────────────────────────
-  const { findings: allPISFindings } = usePISKapalStore()
+  const { findings: allPISFindings } = usePISFindingsData()
   const nfbVettingFindings = useMemo(
     () => allPISFindings.filter(f => f.temuan === 'NEGATIVE_FEEDBACK' || f.temuan === 'VETTING_PLUS'),
     [allPISFindings],
@@ -279,7 +292,7 @@ export default function DashboardPage() {
       matchDate(v.visit_date, viYear, viMonth) &&
       (viBU === 'all' || v.business_unit_id === viBU) &&
       (viType === 'all' || v.visit_type === viType)
-    ), [viYear, viMonth, viBU, viType])
+    ), [mockVisits, viYear, viMonth, viBU, viType])
 
   const filteredFindingsVi = useMemo(() =>
     mockFindings.filter(f =>
@@ -287,7 +300,7 @@ export default function DashboardPage() {
       (viBU === 'all' || f.business_unit_id === viBU) &&
       (viPriority === 'all' || f.priority === viPriority) &&
       (viFindingStatus === 'all' || f.status === viFindingStatus)
-    ), [viYear, viMonth, viBU, viPriority, viFindingStatus])
+    ), [mockFindings, viYear, viMonth, viBU, viPriority, viFindingStatus])
 
   const filteredInternal = useMemo(() =>
     mockInternalInspections.filter(i =>
@@ -295,7 +308,7 @@ export default function DashboardPage() {
       (inFleet  === 'all' || i.vessel?.fleet_id === inFleet) &&
       (inVessel === 'all' || i.vessel_id === inVessel) &&
       (inResult === 'all' || i.result === inResult)
-    ), [inYear, inMonth, inFleet, inVessel, inResult])
+    ), [mockInternalInspections, inYear, inMonth, inFleet, inVessel, inResult])
 
   const filteredExternal = useMemo(() =>
     mockExternalInspections.filter(i =>
@@ -304,7 +317,25 @@ export default function DashboardPage() {
       (exVessel === 'all' || i.vessel_id === exVessel) &&
       (exType   === 'all' || i.inspection_type === exType) &&
       (exResult === 'all' || i.result === exResult)
-    ), [exYear, exMonth, exFleet, exVessel, exType, exResult])
+    ), [mockExternalInspections, exYear, exMonth, exFleet, exVessel, exType, exResult])
+
+  // ── Visit trend chart (last 12 months from real visits data) ─────────────
+  const visitTrend = useMemo(() => {
+    const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des']
+    const counts = new Map<string, number>()
+    mockVisits.forEach(v => {
+      const d = new Date(v.visit_date)
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    })
+    return Array.from(counts.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-12)
+      .map(([key, visits]) => {
+        const [year, month] = key.split('-')
+        return { month: `${MONTH_NAMES[Number(month) - 1]} ${year}`, visits }
+      })
+  }, [mockVisits])
 
   // ── Visit tab stats ────────────────────────────────────────────────────────
   const viTotal       = filteredVisitsVi.length
@@ -445,7 +476,7 @@ export default function DashboardPage() {
       visits:   filteredVisitsVi.filter(v => v.business_unit_id === bu.id).length,
       findings: filteredFindingsVi.filter(f => f.business_unit_id === bu.id).length,
     })).filter(d => d.visits > 0),
-  [filteredVisitsVi, filteredFindingsVi])
+  [filteredVisitsVi, filteredFindingsVi, mockBusinessUnits])
 
   // Static monthly trend data
   const inspTrendData = [
@@ -591,7 +622,7 @@ export default function DashboardPage() {
               <CardContent>
                 {isLoading ? <SkeletonChart height={220} /> : (
                   <ResponsiveContainer width="100%" height={220}>
-                    <LineChart data={mockDashboardChartData.visitTrend}>
+                    <LineChart data={visitTrend}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                       <XAxis dataKey="month" tick={{ fontSize: 12 }} />
                       <YAxis tick={{ fontSize: 12 }} />
@@ -715,7 +746,7 @@ export default function DashboardPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {mockDashboardChartData.vesselComplianceTable.map((row, i) => (
+                      {([] as { op_head: string; fleet: string; compliance: number }[]).map((row, i) => (
                         <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
                           <td className="px-6 py-3 font-medium text-gray-800">{row.op_head}</td>
                           <td className="px-4 py-3 text-gray-500 text-xs">{row.fleet}</td>

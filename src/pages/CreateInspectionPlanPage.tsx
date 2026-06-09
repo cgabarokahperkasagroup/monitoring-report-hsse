@@ -1,4 +1,4 @@
-import { useState, FormEvent } from 'react'
+import { useState, useEffect, FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Info, ShieldCheck } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
@@ -6,11 +6,19 @@ import { Button } from '@/components/ui/button'
 import { Input, Textarea, Select } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { useAuthStore } from '@/stores/authStore'
-import { mockBusinessUnits, mockUsers } from '@/data/mockData'
+import { supabase } from '@/lib/supabase'
+import { useInspectionSchedulesData } from '@/hooks/useInspectionSchedulesData'
 import { useShips, getFleetOptions, shipOptions, findShipById } from '@/hooks/useShips'
 
 const MONTH_NAMES = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
+
+type FleetHSE = {
+  fleet_id: string
+  fleet_name: string
+  hse_officer_id: string
+  hse_officer_name: string
+}
 
 export default function CreateInspectionPlanPage() {
   const navigate = useNavigate()
@@ -29,6 +37,34 @@ export default function CreateInspectionPlanPage() {
     notes: '',
   })
   const [submitting, setSubmitting] = useState(false)
+  const [fleetHseData, setFleetHseData] = useState<FleetHSE[]>([])
+
+  useEffect(() => {
+    supabase.from('fleets').select('id, name, hse_officer_id').eq('is_active', true)
+      .then(async ({ data }) => {
+        const fleets = (data ?? []) as Array<{ id: string; name: string; hse_officer_id: string | null }>
+        const officerIds = fleets.map(f => f.hse_officer_id).filter((id): id is string => !!id)
+        const { data: usersData } = await supabase.from('users').select('id, full_name').in('id', officerIds)
+        const users = (usersData ?? []) as Array<{ id: string; full_name: string }>
+        const userMap = new Map(users.map(u => [u.id, u.full_name]))
+        setFleetHseData(
+          fleets
+            .filter((f): f is typeof f & { hse_officer_id: string } => !!f.hse_officer_id)
+            .map(f => ({
+              fleet_id: f.id,
+              fleet_name: f.name,
+              hse_officer_id: f.hse_officer_id,
+              hse_officer_name: userMap.get(f.hse_officer_id) ?? '—',
+            }))
+            .sort((a, b) => a.fleet_name.localeCompare(b.fleet_name))
+        )
+      })
+  }, [])
+
+  const { createSchedule } = useInspectionSchedulesData()
+
+  const { ships } = useShips()
+  const fleetOpts = getFleetOptions(ships)
 
   // Only HEAD_HSSE and SUPER_ADMIN can access this page
   const canCreate = user?.role === 'HEAD_HSSE' || user?.role === 'SUPER_ADMIN'
@@ -49,15 +85,30 @@ export default function CreateInspectionPlanPage() {
 
   const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }))
 
-  const { ships } = useShips()
-  const fleetOpts = getFleetOptions(ships)
+  // SMS API uses numeric fleet IDs; Supabase fleets use UUIDs — match by name instead
+  const selectedFleetName = form.fleet_id
+    ? fleetOpts.find(f => f.value === form.fleet_id)?.label ?? null
+    : null
+
+  function handleFleetChange(fleetId: string) {
+    const fleetName = fleetOpts.find(f => f.value === fleetId)?.label
+    const officers = fleetName ? fleetHseData.filter(f => f.fleet_name === fleetName) : []
+    setForm(p => ({
+      ...p,
+      fleet_id: fleetId,
+      vessel_id: '',
+      hse_officer_id: officers.length === 1 ? officers[0].hse_officer_id : '',
+    }))
+  }
+
+  const hseOptions = (selectedFleetName
+    ? fleetHseData.filter(f => f.fleet_name === selectedFleetName)
+    : fleetHseData
+  ).map(f => ({ value: f.hse_officer_id, label: `${f.hse_officer_name} – ${f.fleet_name}` }))
+
   const vesselOpts = shipOptions(ships, form.fleet_id || undefined)
 
   const selectedShip = findShipById(ships, form.vessel_id)
-  const autoHseOfficer = undefined
-
-  // HSE officers: all PIC-role users linked to a fleet
-  const hseUsers = mockUsers.filter(u => u.role === 'PIC' && u.fleet_id)
 
   const isValid = form.vessel_id && form.scheduled_date && form.period_month && form.period_year
 
@@ -67,8 +118,21 @@ export default function CreateInspectionPlanPage() {
     if (!form.scheduled_date) { error('Data Tidak Lengkap', 'Tanggal jadwal harus diisi.'); return }
 
     setSubmitting(true)
-    await new Promise(r => setTimeout(r, 800))
+    const result = await createSchedule({
+      vessel_id: form.vessel_id,
+      vessel_name: selectedShip?.name,
+      fleet_id: form.fleet_id,
+      fleet_name: selectedShip?.fleet?.name ?? fleetOpts.find(f => f.value === form.fleet_id)?.label,
+      hse_officer_id: form.hse_officer_id || undefined,
+      scheduled_date: form.scheduled_date,
+      period_month: Number(form.period_month),
+      period_year: Number(form.period_year),
+      notes: form.notes || undefined,
+      created_by: user!.id,
+    })
     setSubmitting(false)
+
+    if (result?.error) { error('Gagal Membuat Rencana', result.error); return }
 
     const month = MONTH_NAMES[Number(form.period_month) - 1]
     success(
@@ -116,7 +180,7 @@ export default function CreateInspectionPlanPage() {
             <Select searchable
               label="Armada" required
               value={form.fleet_id}
-              onChange={e => { set('fleet_id', e.target.value); set('vessel_id', '') }}
+              onChange={e => handleFleetChange(e.target.value)}
               placeholder="Pilih Armada"
               options={fleetOpts}
             />
@@ -134,8 +198,8 @@ export default function CreateInspectionPlanPage() {
               label="HSE PIC" required
               value={form.hse_officer_id}
               onChange={e => set('hse_officer_id', e.target.value)}
-              placeholder="Pilih HSE Officer"
-              options={hseUsers.map(u => ({ value: u.id, label: u.full_name }))}
+              placeholder={form.fleet_id ? 'Pilih HSE Officer' : 'Pilih armada terlebih dahulu'}
+              options={hseOptions}
             />
 
             <div className="grid grid-cols-2 gap-4">

@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Pagination } from '@/components/ui/pagination'
 import { FilterChips } from '@/components/ui/filter-chips'
-import { mockFindings } from '@/data/mockData'
+import { useFindingsData } from '@/hooks/useFindingsData'
 import { FINDING_STATUS_OPTIONS, FINDING_PRIORITY_OPTIONS } from '@/data/masterOptions'
 import { useAuthStore } from '@/stores/authStore'
 import {
@@ -40,6 +40,7 @@ function SortIcon({ field, sortField, sortDir }: { field: SortField; sortField: 
 export default function FindingsPage({ myFindingsOnly, ownerOnly }: FindingsPageProps) {
   const navigate = useNavigate()
   const { user } = useAuthStore()
+  const { findings: allFindings } = useFindingsData()
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [filterPriority, setFilterPriority] = useState('')
@@ -54,11 +55,11 @@ export default function FindingsPage({ myFindingsOnly, ownerOnly }: FindingsPage
   }
 
   const baseFindings = useMemo(() => {
-    let all = mockFindings
+    let all = allFindings
     if (myFindingsOnly && user) all = all.filter(f => f.assigned_to === user.id)
     if (ownerOnly) all = all.filter(f => f.is_owner_finding)
     return all
-  }, [myFindingsOnly, ownerOnly, user])
+  }, [allFindings, myFindingsOnly, ownerOnly, user])
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase()

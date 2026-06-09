@@ -7,10 +7,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
-import { mockBusinessUnits, mockFleets } from '@/data/mockData'
+import { supabase } from '@/lib/supabase'
 import { useShips, getFleetOptions, shipOptions } from '@/hooks/useShips'
 import { useAuthStore } from '@/stores/authStore'
-import type { UserRole, VisitType } from '@/types'
+import type { UserRole, VisitType, BusinessUnit, Fleet } from '@/types'
 
 type PeriodType = 'range' | 'month' | 'year'
 
@@ -142,6 +142,15 @@ export default function ReportsPage() {
   const { user } = useAuthStore()
   const { ships } = useShips()
 
+  const [businessUnits, setBusinessUnits] = useState<BusinessUnit[]>([])
+  const [fleets, setFleets] = useState<Fleet[]>([])
+  useEffect(() => {
+    supabase.from('business_units').select('id, code, name, description, is_active, created_at').eq('is_active', true)
+      .then(({ data }) => { if (data) setBusinessUnits(data as unknown as BusinessUnit[]) })
+    supabase.from('fleets').select('id, name, business_unit_id, op_head_user_id, hse_officer_id, visit_frequency, is_active, created_at').eq('is_active', true)
+      .then(({ data }) => { if (data) setFleets(data as unknown as Fleet[]) })
+  }, [])
+
   const isRestricted = user ? !FULL_ACCESS_ROLES.includes(user.role) : false
   const constraints = useMemo<AccessConstraints>(() => {
     if (!user || !isRestricted) {
@@ -179,10 +188,10 @@ export default function ReportsPage() {
   const allFleetOptions = useMemo(() => getFleetOptions(ships), [ships])
   const allowedFleetIds = useMemo(() => {
     if (constraints.lockedBUIds.length === 0) return null // no restriction
-    return mockFleets
+    return fleets
       .filter(f => constraints.lockedBUIds.includes(f.business_unit_id))
       .map(f => String(f.id))
-  }, [constraints.lockedBUIds])
+  }, [constraints.lockedBUIds, fleets])
 
   const scopedFleetOptions = useMemo(() => {
     if (!allowedFleetIds) return allFleetOptions
@@ -197,12 +206,12 @@ export default function ReportsPage() {
   // BU options for non-restricted: all; for restricted: only assigned BUs
   const buOptions = useMemo(() => {
     if (constraints.lockedBUIds.length === 0) {
-      return [{ value: 'ALL', label: 'Semua Unit Bisnis' }, ...mockBusinessUnits.map(b => ({ value: b.id, label: b.name }))]
+      return [{ value: 'ALL', label: 'Semua Unit Bisnis' }, ...businessUnits.map(b => ({ value: b.id, label: b.name }))]
     }
-    return mockBusinessUnits
+    return businessUnits
       .filter(b => constraints.lockedBUIds.includes(b.id))
       .map(b => ({ value: b.id, label: b.name }))
-  }, [constraints.lockedBUIds])
+  }, [constraints.lockedBUIds, businessUnits])
 
   // Visit type options scoped to allowedVisitTypes
   const visitTypeOptions = useMemo(() => {
