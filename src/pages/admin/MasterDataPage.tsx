@@ -46,7 +46,7 @@ export default function MasterDataPage() {
 
   useEffect(() => {
     Promise.all([
-      supabase.from('business_units').select('*', { count: 'exact', head: true }),
+      supabase.from('business_units_mh').select('*', { count: 'exact', head: true }),
       supabase.from('sites').select('*', { count: 'exact', head: true }),
       supabase.from('finding_categories').select('*', { count: 'exact', head: true }),
       supabase.from('pis_perusahaan').select('*', { count: 'exact', head: true }),
@@ -141,7 +141,7 @@ function BusinessUnitTab({ onSave, onDelete }: { onSave: () => void; onDelete: (
   const [businessUnits, setBusinessUnits] = useState<DBBE[]>([])
 
   function refetch() {
-    supabase.from('business_units').select('id, code, name, description, is_active')
+    supabase.from('business_units_mh').select('id, code, name, description, is_active')
       .then(({ data }) => { if (data) setBusinessUnits(data as unknown as DBBE[]) })
   }
 
@@ -149,7 +149,7 @@ function BusinessUnitTab({ onSave, onDelete }: { onSave: () => void; onDelete: (
 
   async function handleDelete(bu: DBBE) {
     if (!confirm(`Hapus unit bisnis "${bu.name}"?`)) return
-    await supabase.from('business_units').delete().eq('id', bu.id)
+    await supabase.from('business_units_mh').delete().eq('id', bu.id)
     setBusinessUnits(prev => prev.filter(x => x.id !== bu.id))
     onDelete()
   }
@@ -261,9 +261,9 @@ function BUFormModal({ open, onClose, data, onSaved }: {
     setLoading(true)
     const payload = { code: form.code.trim().toUpperCase(), name: form.name.trim(), description: form.description.trim() || null, is_active: form.is_active }
     if (data) {
-      await supabase.from('business_units').update(payload as any).eq('id', data.id)
+      await supabase.from('business_units_mh').update(payload as any).eq('id', data.id)
     } else {
-      await supabase.from('business_units').insert(payload as any)
+      await supabase.from('business_units_mh').insert(payload as any)
     }
     setLoading(false)
     onSaved()
@@ -558,7 +558,7 @@ function SitesTab({ onSave, onDelete }: { onSave: () => void; onDelete: () => vo
 
   useEffect(() => {
     refetch()
-    supabase.from('business_units').select('id, code, name, description, is_active').eq('is_active', true)
+    supabase.from('business_units_mh').select('id, code, name, description, is_active').eq('is_active', true)
       .then(({ data }) => { if (data) setBusinessUnits(data as unknown as DBBE[]) })
   }, [])
 

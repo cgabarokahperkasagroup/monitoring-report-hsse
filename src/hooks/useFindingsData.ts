@@ -6,7 +6,7 @@ import type { Finding, FindingProgressEntry, FindingClosingRequest } from '@/typ
 const FINDING_SELECT = `
   *,
   visit:visits(id, reference_no, visit_type, visit_date),
-  business_unit:business_units(*),
+  business_unit:business_units_mh(*),
   assigned_to_user:users!findings_assigned_to_fkey(id, full_name, email, role, is_active, must_change_password, created_at, updated_at),
   created_by_user:users!findings_created_by_fkey(id, full_name, email, role, is_active, must_change_password, created_at, updated_at),
   closed_by_user:users!findings_closed_by_fkey(id, full_name, email, role, is_active, must_change_password, created_at, updated_at),

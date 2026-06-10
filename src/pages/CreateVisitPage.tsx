@@ -50,7 +50,7 @@ export default function CreateVisitPage() {
   const [sites, setSites] = useState<{ id: string; name: string; business_unit_id: string; site_type?: string | null }[]>([])
 
   useEffect(() => {
-    supabase.from('business_units').select('id, code, name').order('name').then(({ data }) => {
+    supabase.from('business_units_mh').select('id, code, name').order('name').then(({ data }) => {
       if (data) setBusinessUnits(data)
     })
     supabase.from('sites').select('id, name, business_unit_id, site_type').order('name').then(({ data }) => {

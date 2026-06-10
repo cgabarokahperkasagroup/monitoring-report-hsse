@@ -51,7 +51,7 @@ export default function UsersPage() {
   async function loadData() {
     const [{ data: userData }, { data: buData }] = await Promise.all([
       supabase.from('users').select('id, full_name, email, role, is_active, must_change_password, user_business_units(business_unit_id)'),
-      supabase.from('business_units').select('id, code, name').eq('is_active', true),
+      supabase.from('business_units_mh').select('id, code, name').eq('is_active', true),
     ])
     if (userData) setUsers(userData as unknown as DBUser[])
     if (buData) setBusinessUnits(buData as unknown as DBBusinessUnit[])

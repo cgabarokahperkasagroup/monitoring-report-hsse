@@ -31,6 +31,14 @@ export type Database = {
           & { id?: string; created_at?: string }
         Update: Partial<Database['monitoring-hsse']['Tables']['business_units']['Insert']>
       }
+      // public.business_units is occupied by another app's table, so this app's
+      // business units are exposed via the public view public.business_units_mh.
+      // Always query 'business_units_mh' (NOT 'business_units') from the client.
+      business_units_mh: {
+        Row: Database['monitoring-hsse']['Tables']['business_units']['Row']
+        Insert: Database['monitoring-hsse']['Tables']['business_units']['Insert']
+        Update: Database['monitoring-hsse']['Tables']['business_units']['Update']
+      }
       finding_categories: {
         Row: {
           id: string

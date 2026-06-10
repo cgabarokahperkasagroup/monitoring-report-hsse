@@ -5,7 +5,7 @@ import type { Visit, FindingProgressEntry, FindingClosingRequest } from '@/types
 
 const VISIT_SELECT = `
   *,
-  business_unit:business_units(*),
+  business_unit:business_units_mh(*),
   site:sites(*),
   created_by_user:users!visits_created_by_fkey(id, full_name, email, role, is_active, must_change_password, created_at, updated_at),
   approved_by_user:users!visits_approved_by_fkey(id, full_name, email, role, is_active, must_change_password, created_at, updated_at)
@@ -67,7 +67,7 @@ export function useVisit(id: string | undefined) {
       supabase.from('visits').select(VISIT_SELECT).eq('id', id).single(),
       supabase.from('findings').select(`
         *,
-        business_unit:business_units(*),
+        business_unit:business_units_mh(*),
         assigned_to_user:users!findings_assigned_to_fkey(id, full_name, email, role, is_active, must_change_password, created_at, updated_at),
         created_by_user:users!findings_created_by_fkey(id, full_name, email, role, is_active, must_change_password, created_at, updated_at),
         closed_by_user:users!findings_closed_by_fkey(id, full_name, email, role, is_active, must_change_password, created_at, updated_at),

@@ -195,7 +195,7 @@ export default function DashboardPage() {
   const [mockVessels, setMockVessels] = useState<Vessel[]>([])
 
   useEffect(() => {
-    supabase.from('business_units').select('id, name, code, is_active, created_at').eq('is_active', true)
+    supabase.from('business_units_mh').select('id, name, code, is_active, created_at').eq('is_active', true)
       .then(({ data }) => { if (data) setMockBusinessUnits(data as BusinessUnit[]) })
     supabase.from('fleets').select('id, name, business_unit_id, op_head_user_id, visit_frequency, is_active, created_at').eq('is_active', true)
       .then(({ data }) => { if (data) setMockFleets(data as Fleet[]) })

@@ -77,7 +77,7 @@ export default function CreateExternalInspectionPage() {
 
   const [shippingBuId, setShippingBuId] = useState('')
   useEffect(() => {
-    supabase.from('business_units').select('id').eq('code', 'SHP').single().then(({ data }) => {
+    supabase.from('business_units_mh').select('id').eq('code', 'SHP').single().then(({ data }) => {
       const bu = data as { id: string } | null
       if (bu) setShippingBuId(bu.id)
     })

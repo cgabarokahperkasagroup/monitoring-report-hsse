@@ -145,7 +145,7 @@ export default function ReportsPage() {
   const [businessUnits, setBusinessUnits] = useState<BusinessUnit[]>([])
   const [fleets, setFleets] = useState<Fleet[]>([])
   useEffect(() => {
-    supabase.from('business_units').select('id, code, name, description, is_active, created_at').eq('is_active', true)
+    supabase.from('business_units_mh').select('id, code, name, description, is_active, created_at').eq('is_active', true)
       .then(({ data }) => { if (data) setBusinessUnits(data as unknown as BusinessUnit[]) })
     supabase.from('fleets').select('id, name, business_unit_id, op_head_user_id, hse_officer_id, visit_frequency, is_active, created_at').eq('is_active', true)
       .then(({ data }) => { if (data) setFleets(data as unknown as Fleet[]) })

@@ -265,7 +265,7 @@ export default function CreateInternalInspectionPage() {
   const [fromSchedule, setFromSchedule] = useState(false)
 
   useEffect(() => {
-    supabase.from('business_units').select('id, code, name').order('name').then(({ data }) => {
+    supabase.from('business_units_mh').select('id, code, name').order('name').then(({ data }) => {
       if (data) {
         const units = data as { id: string; code: string; name: string }[]
         setBusinessUnits(units)

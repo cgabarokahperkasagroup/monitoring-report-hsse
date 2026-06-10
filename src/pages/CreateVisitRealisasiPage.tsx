@@ -85,7 +85,7 @@ export default function CreateVisitRealisasiPage() {
   const [picUsers, setPicUsers] = useState<Array<{id: string, full_name: string}>>([])
 
   useEffect(() => {
-    supabase.from('business_units').select('id, code')
+    supabase.from('business_units_mh').select('id, code')
       .eq('code', 'SHP').single()
       .then(({ data }) => { if (data) setShpBuId((data as { id: string }).id) })
     supabase.from('finding_categories').select('id, name').eq('is_active', true)
