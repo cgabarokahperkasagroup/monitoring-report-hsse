@@ -207,7 +207,7 @@ export async function createInternalInspection(data: {
   vessel_id: string; vessel_name?: string; business_unit_id: string; inspection_date: string
   lead_inspector_id: string; inspector_ids: string[]; status: string
   result?: string; total_items_checked: number; items_satisfactory: number
-  items_deficient: number; notes?: string; created_by: string
+  items_deficient: number; notes?: string; created_by: string; fleet_id?: string | null
   findings?: Omit<InspectionFinding, 'id' | 'created_at' | 'progress_entries' | 'closing_request'>[]
 }): Promise<{ id?: string; error?: string }> {
   // Kapal dari SMS API (id integer) → simpan snapshot, FK vessel_id null.
@@ -239,6 +239,7 @@ export async function createInternalInspection(data: {
     approved_by: null,
     approved_at: null,
     created_by: data.created_by,
+    fleet_id: data.fleet_id ?? null,
   }).select('id').single()
 
   if (error) return { error: error.message }

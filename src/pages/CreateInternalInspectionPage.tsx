@@ -9,6 +9,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { supabase } from '@/lib/supabase'
 import { createInternalInspection } from '@/hooks/useInternalInspectionsData'
 import { useShips, shipOptions, findShipById } from '@/hooks/useShips'
+import { useFleetResolver } from '@/hooks/useFleetResolver'
 import type { FindingPriority } from '@/types'
 
 // ─── Checklist definition ─────────────────────────────────────────────────────
@@ -297,7 +298,8 @@ export default function CreateInternalInspectionPage() {
   }, [scheduleId])
 
   const { ships } = useShips()
-  const filteredVessels = shipOptions(ships)
+  const { restrictToFleetExtId, resolveFleetId } = useFleetResolver()
+  const filteredVessels = shipOptions(ships, restrictToFleetExtId != null ? String(restrictToFleetExtId) : undefined)
 
   const handleItemChange = (area: string, item: string, field: 'status' | 'note', value: string) => {
     setChecklist(prev => prev.map(c =>
@@ -374,6 +376,7 @@ export default function CreateInternalInspectionPage() {
     const res = await createInternalInspection({
       vessel_id: form.vessel_id,
       vessel_name: findShipById(ships, form.vessel_id)?.name,
+      fleet_id: resolveFleetId(form.vessel_id),
       business_unit_id: buId,
       inspection_date: form.inspection_date,
       lead_inspector_id: user.id,

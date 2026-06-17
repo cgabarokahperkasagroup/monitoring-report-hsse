@@ -337,6 +337,9 @@ export type Database = {
           created_by: string
           created_at: string
           updated_at: string
+          vessel_name: string | null
+          vessel_external_id: number | null
+          fleet_id: string | null
         }
         Insert: Omit<Database['monitoring-hsse']['Tables']['internal_inspections']['Row'], 'id' | 'created_at' | 'updated_at'>
           & { id?: string; created_at?: string; updated_at?: string }
@@ -372,6 +375,9 @@ export type Database = {
           created_by: string
           created_at: string
           updated_at: string
+          vessel_name: string | null
+          vessel_external_id: number | null
+          fleet_id: string | null
         }
         Insert: Omit<Database['monitoring-hsse']['Tables']['external_inspections']['Row'], 'id' | 'created_at' | 'updated_at'>
           & { id?: string; created_at?: string; updated_at?: string }

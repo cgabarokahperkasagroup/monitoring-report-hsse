@@ -9,6 +9,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { supabase } from '@/lib/supabase'
 import { createExternalInspection } from '@/hooks/useExternalInspectionsData'
 import { useShips, shipOptions, findShipById } from '@/hooks/useShips'
+import { useFleetResolver } from '@/hooks/useFleetResolver'
 import type { ExternalInspectionType } from '@/types'
 import { getExternalInspectionTypeLabel } from '@/utils'
 import { cn } from '@/lib/utils'
@@ -105,7 +106,8 @@ export default function CreateExternalInspectionPage() {
   const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }))
 
   const { ships } = useShips()
-  const filteredVessels = shipOptions(ships)
+  const { restrictToFleetExtId, resolveFleetId } = useFleetResolver()
+  const filteredVessels = shipOptions(ships, restrictToFleetExtId != null ? String(restrictToFleetExtId) : undefined)
 
   const addObservation = () => {
     setObservations(prev => [...prev, {
@@ -155,6 +157,7 @@ export default function CreateExternalInspectionPage() {
     const res = await createExternalInspection({
       vessel_id: form.vessel_id,
       vessel_name: findShipById(ships, form.vessel_id)?.name,
+      fleet_id: resolveFleetId(form.vessel_id),
       business_unit_id: buId,
       inspection_type: selectedType,
       inspection_date: form.inspection_date,
