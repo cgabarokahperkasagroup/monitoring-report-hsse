@@ -155,7 +155,7 @@ export function useVisit(id: string | undefined) {
     })
     if (!err) await fetchVisit()
     return { error: err?.message }
-  }, [id, visit, findings.length, fetchVisit])
+  }, [id, visit, fetchVisit])
 
   return { visit, findings, loading, error, refetch: fetchVisit, approveVisit, rejectVisit, submitVisit, addFinding }
 }

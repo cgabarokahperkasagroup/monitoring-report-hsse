@@ -71,6 +71,8 @@ export default function PrintVisitReportPage() {
       } catch { /* ignore */ }
     }
     setInspection(defaultInspectionData(visit.agenda, visit.summary))
+    // Re-run only when the visit identity changes; agenda/summary are stable per visit id.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, visit?.id])
 
   if (loading) return (

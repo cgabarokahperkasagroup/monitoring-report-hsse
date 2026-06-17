@@ -546,12 +546,12 @@ function PhotoLightbox({ photos, index: initialIndex, onClose }: {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
-      if (e.key === 'ArrowLeft') prev()
-      if (e.key === 'ArrowRight') next()
+      if (e.key === 'ArrowLeft') setIndex(i => (i - 1 + photos.length) % photos.length)
+      if (e.key === 'ArrowRight') setIndex(i => (i + 1) % photos.length)
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [photos.length])
+  }, [photos.length, onClose])
 
   return (
     <div
@@ -694,7 +694,7 @@ function ClosingOnlyModal({ open, onClose, onSave, lastEntry, isOverdue }: {
       setConditionAfter(lastEntry?.description ?? '')
       setEvidenceFiles([])
     }
-  }, [open])
+  }, [open, lastEntry?.description])
 
   const valid = condition_after.trim() !== ''
 

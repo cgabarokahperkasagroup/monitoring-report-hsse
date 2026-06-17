@@ -157,7 +157,7 @@ function InspClosingFormModal({ open, onClose, onSave, isOverdue, lastEntry }: {
         condition_after: lastEntry?.description ?? '',
       })
     }
-  }, [open])
+  }, [open, lastEntry?.action_date, lastEntry?.description])
 
   const handleClose = () => {
     setForm({ action_date: '', summary: '', condition_after: '' })
