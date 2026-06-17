@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
 import { useAuthStore } from '@/stores/authStore'
+import { supabaseClient } from '@/lib/supabase'
 import { getRoleLabel, getRoleColor } from '@/utils'
 
 export default function ProfilePage() {
@@ -17,12 +18,29 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false)
 
   const handleSavePw = async () => {
+    if (!user) return
     if (!currentPw || !newPw || !confirmPw) { error('Lengkapi semua field password'); return }
     if (newPw !== confirmPw) { error('Konfirmasi password tidak cocok'); return }
     if (newPw.length < 8) { error('Password minimal 8 karakter'); return }
+    if (newPw === currentPw) { error('Password baru harus berbeda dari password saat ini'); return }
     setSaving(true)
-    await new Promise(r => setTimeout(r, 800))
+    // 1. Verifikasi password saat ini dengan re-autentikasi
+    const { error: signInErr } = await supabaseClient.auth.signInWithPassword({
+      email: user.email,
+      password: currentPw,
+    })
+    if (signInErr) {
+      setSaving(false)
+      error('Password saat ini salah')
+      return
+    }
+    // 2. Perbarui ke password baru
+    const { error: updateErr } = await supabaseClient.auth.updateUser({ password: newPw })
     setSaving(false)
+    if (updateErr) {
+      error('Gagal memperbarui password', updateErr.message)
+      return
+    }
     success('Password berhasil diperbarui', 'Silakan gunakan password baru untuk login berikutnya')
     setCurrentPw(''); setNewPw(''); setConfirmPw('')
   }
