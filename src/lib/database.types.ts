@@ -107,6 +107,7 @@ export type Database = {
           visit_frequency: 'daily' | 'weekly' | 'monthly'
           is_active: boolean
           created_at: string
+          fleet_external_id: number | null
         }
         Insert: Omit<Database['monitoring-hsse']['Tables']['fleets']['Row'], 'id' | 'created_at'>
           & { id?: string; created_at?: string }
@@ -210,6 +211,9 @@ export type Database = {
           attachments: string[]
           created_at: string
           updated_at: string
+          vessel_name: string | null
+          vessel_external_id: number | null
+          fleet_id: string | null
         }
         Insert: Omit<Database['monitoring-hsse']['Tables']['visits']['Row'], 'id' | 'created_at' | 'updated_at'>
           & { id?: string; created_at?: string; updated_at?: string }

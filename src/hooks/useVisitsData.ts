@@ -163,6 +163,7 @@ export function useVisit(id: string | undefined) {
 // ── Create visit ────────────────────────────────────────────────────────────
 export async function createVisit(data: {
   visit_type: string; business_unit_id: string; vessel_id?: string; vessel_name?: string; site_id?: string
+  fleet_id?: string | null
   visit_date: string; start_time?: string; end_time?: string; participants: string[]
   agenda?: string; summary?: string; status?: string; created_by: string
   attachments?: string[]; bu_code?: string
@@ -198,6 +199,8 @@ export async function createVisit(data: {
     vessel_id: null,
     vessel_name: data.vessel_name ?? null,
     vessel_external_id: data.vessel_id ? Number(data.vessel_id) : null,
+    // Fleet pemilik visit (untuk RLS per-fleet OP_HEAD/STAFF_HSSE). Null untuk site/owner visit tanpa kapal.
+    fleet_id: data.fleet_id ?? null,
     site_id: data.site_id ?? null,
     visit_date: data.visit_date,
     start_time: data.start_time ?? null,

@@ -48,6 +48,7 @@ export default function CreateVisitPage() {
 
   const [businessUnits, setBusinessUnits] = useState<{ id: string; code: string; name: string }[]>([])
   const [sites, setSites] = useState<{ id: string; name: string; business_unit_id: string; site_type?: string | null }[]>([])
+  const [fleets, setFleets] = useState<{ id: string; op_head_user_id: string | null; hse_officer_id: string | null; fleet_external_id: number | null }[]>([])
 
   useEffect(() => {
     supabase.from('business_units_mh').select('id, code, name').order('name').then(({ data }) => {
@@ -56,7 +57,27 @@ export default function CreateVisitPage() {
     supabase.from('sites').select('id, name, business_unit_id, site_type').order('name').then(({ data }) => {
       if (data) setSites(data)
     })
+    supabase.from('fleets').select('id, op_head_user_id, hse_officer_id, fleet_external_id').then(({ data }) => {
+      if (data) setFleets(data)
+    })
   }, [])
+
+  // Fleet yang menjadi tanggung jawab user (OP_HEAD: fleet yg dipimpin, STAFF_HSSE: fleet yg ditangani).
+  const myFleets = useMemo(
+    () => (user ? fleets.filter(f => f.op_head_user_id === user.id || f.hse_officer_id === user.id || f.id === user.fleet_id) : []),
+    [fleets, user],
+  )
+  // Hanya OP_HEAD yang membuat Vessel Visit & terbatas pada fleet-nya — kunci dropdown kapal ke fleet itu.
+  const restrictToFleetExtId = useMemo(
+    () => (user?.role === 'OP_HEAD' ? (myFleets.map(f => f.fleet_external_id).find(Boolean) ?? null) : null),
+    [user, myFleets],
+  )
+  /** Resolusi UUID fleet monitoring dari kapal SMS terpilih (via fleet_external_id). */
+  function resolveFleetId(vesselId: string): string | null {
+    const ship = findShipById(ships, vesselId)
+    if (!ship) return null
+    return fleets.find(f => f.fleet_external_id === ship.fleet.id)?.id ?? null
+  }
 
   const shippingBUID = useMemo(() => businessUnits.find(bu => bu.code === 'SHP')?.id ?? '', [businessUnits])
 
@@ -89,7 +110,7 @@ export default function CreateVisitPage() {
 
   const availableTypes = visitTypes.filter(vt => !user || vt.roles.includes(user.role))
   const { ships } = useShips()
-  const filteredVessels = shipOptions(ships)
+  const filteredVessels = shipOptions(ships, restrictToFleetExtId != null ? String(restrictToFleetExtId) : undefined)
   const filteredSites = form.business_unit_id
     ? sites.filter(s => s.business_unit_id === form.business_unit_id)
     : sites
@@ -107,6 +128,7 @@ export default function CreateVisitPage() {
       business_unit_id: buId,
       vessel_id: form.vessel_id || undefined,
       vessel_name: form.vessel_id ? findShipById(ships, form.vessel_id)?.name : undefined,
+      fleet_id: form.vessel_id ? resolveFleetId(form.vessel_id) : null,
       site_id: form.site_id || undefined,
       visit_date: form.visit_date,
       start_time: form.start_time || undefined,
