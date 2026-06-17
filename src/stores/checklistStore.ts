@@ -44,7 +44,7 @@ function loadFromStorage(): StoredData | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) return JSON.parse(raw) as StoredData
-  } catch {}
+  } catch { /* corrupt or unavailable storage — fall through to null */ }
   return null
 }
 
@@ -55,7 +55,7 @@ interface StoredData {
 }
 
 function persist(state: StoredData) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)) } catch {}
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)) } catch { /* storage unavailable — ignore */ }
 }
 
 function uid() { return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }

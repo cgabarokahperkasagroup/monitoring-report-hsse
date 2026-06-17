@@ -586,7 +586,7 @@ export default function PISKapalDetailPage() {
           )}
 
           {/* Progress entries */}
-          {sortedEntries.map((entry, i) => (
+          {sortedEntries.map((entry, _i) => (
             <TimelineNode
               key={entry.id}
               type="PROGRESS"

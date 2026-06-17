@@ -4,7 +4,6 @@ import { FileUpload } from '@/components/ui/file-upload'
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Modal } from '@/components/ui/modal'
 import { Input, Textarea, Select } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
@@ -15,7 +14,7 @@ import {
   getPriorityColor, getPriorityLabel, getStatusColor, getStatusLabel,
   getActionTypeLabel, getActionTypeColor, formatDate, formatDateTime
 } from '@/utils'
-import type { FindingPriority, ActionType, FindingProgressEntry } from '@/types'
+import type { FindingPriority, FindingProgressEntry } from '@/types'
 import { cn } from '@/lib/utils'
 
 const actionTypeOptions = [
@@ -336,7 +335,7 @@ export default function FindingDetailPage() {
             />
           )}
 
-          {sortedEntries.map((entry, i) => (
+          {sortedEntries.map((entry, _i) => (
             <TimelineNode
               key={entry.id}
               type="PROGRESS"

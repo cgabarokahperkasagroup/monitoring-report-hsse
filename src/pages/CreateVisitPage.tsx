@@ -128,7 +128,7 @@ export default function CreateVisitPage() {
 
     // Link visit to schedule if this is a realization
     if (scheduleId && result.id) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       await (supabase.from('visit_schedules') as any)
         .update({ visit_id: result.id, status: 'COMPLETED' })
         .eq('id', scheduleId)

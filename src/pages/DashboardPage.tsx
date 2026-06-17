@@ -8,7 +8,7 @@ import {
   CheckCircle2, Clock, Ship, Star, ArrowUpRight,
   ClipboardCheck, Shield, Activity, Target, FileCheck,
   Calendar, Award, XCircle,
-  Filter, Flame, TrendingDown, RefreshCw, MessageSquareX, Anchor
+  Filter, Flame, TrendingDown, RefreshCw, MessageSquareX
 } from 'lucide-react'
 import { useState, useEffect, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -164,17 +164,6 @@ function SectionHeader({ icon: Icon, title, color = '#1B3A6B', action, onAction 
           {action} <ArrowUpRight size={11} />
         </button>
       )}
-    </div>
-  )
-}
-
-// ─── Stat mini box ────────────────────────────────────────────────────────────
-
-function MiniStat({ label, value, color }: { label: string; value: string | number; color: string }) {
-  return (
-    <div className="rounded-lg p-3 text-center" style={{ backgroundColor: color + '15' }}>
-      <p className="text-2xl font-bold" style={{ color }}>{value}</p>
-      <p className="text-[11px] text-gray-500 mt-0.5 leading-tight">{label}</p>
     </div>
   )
 }
@@ -342,9 +331,6 @@ export default function DashboardPage() {
   const viOwner       = filteredVisitsVi.filter(v => v.visit_type === 'OWNER_VISIT').length
   const viVessel      = filteredVisitsVi.filter(v => v.visit_type === 'VESSEL_VISIT').length
   const viSite        = filteredVisitsVi.filter(v => v.visit_type === 'SITE_VISIT').length
-  const viApproved    = filteredVisitsVi.filter(v => v.status === 'APPROVED').length
-  const viSubmitted   = filteredVisitsVi.filter(v => v.status === 'SUBMITTED').length
-  const viDraft       = filteredVisitsVi.filter(v => v.status === 'DRAFT').length
   const viFtotal      = filteredFindingsVi.length
   const viFclosed     = filteredFindingsVi.filter(f => f.status === 'CLOSED').length
   const viFactive     = filteredFindingsVi.filter(f => ['OPEN', 'IN_PROGRESS', 'OVERDUE'].includes(f.status)).length
@@ -393,16 +379,6 @@ export default function DashboardPage() {
     { name: 'Belum Dinilai',  value: inTotal - inSatisfactory - inConditional - inUnsatisf, color: '#94A3B8' },
   ].filter(d => d.value > 0)
 
-  const intDefPerVessel = filteredInternal
-    .filter(i => i.items_deficient > 0)
-    .map(i => ({
-      vessel: i.vessel?.name?.replace('MV ', '').replace('MT ', '').replace('KM ', '') || i.vessel_id,
-      deficient: i.items_deficient,
-      compliance: i.total_items_checked > 0 ? Math.round((i.items_satisfactory / i.total_items_checked) * 100) : 0,
-    }))
-    .sort((a, b) => b.deficient - a.deficient)
-    .slice(0, 6)
-
   const compliancePerVessel = useMemo(() => {
     const map: Record<string, { name: string; checked: number; satisfactory: number; deficient: number }> = {}
     filteredInternal.forEach(insp => {
@@ -423,7 +399,7 @@ export default function DashboardPage() {
   const areaBreakdown = useMemo(() => {
     const areaMap: Record<string, { total: number; open: number }> = {}
     filteredInternal.forEach(insp => {
-      ;(insp.findings || []).forEach(f => {
+      (insp.findings || []).forEach(f => {
         if (!areaMap[f.area]) areaMap[f.area] = { total: 0, open: 0 }
         areaMap[f.area].total++
         if (f.status !== 'CLOSED') areaMap[f.area].open++

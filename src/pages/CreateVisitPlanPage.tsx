@@ -30,6 +30,10 @@ export default function CreateVisitPlanPage() {
   })
   const [submitting, setSubmitting] = useState(false)
 
+  // Hooks must run unconditionally, before any early return (Rules of Hooks).
+  const { ships } = useShips()
+  const { createSchedule } = useVisitSchedulesData()
+
   if (!canCreate) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center gap-4">
@@ -47,8 +51,6 @@ export default function CreateVisitPlanPage() {
 
   const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }))
 
-  const { ships } = useShips()
-  const { createSchedule } = useVisitSchedulesData()
   const fleetOpts = getFleetOptions(ships)
   const filteredVessels = form.fleet_id ? shipOptions(ships, form.fleet_id) : []
 

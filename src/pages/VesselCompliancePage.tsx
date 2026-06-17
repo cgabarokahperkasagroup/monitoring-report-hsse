@@ -45,7 +45,6 @@ export default function VesselCompliancePage() {
   const navigate  = useNavigate()
   const { user }  = useAuthStore()
 
-  const isOpHead     = user?.role === 'OP_HEAD'
   const canManagePlan = user?.role === 'HEAD_HSSE' || user?.role === 'SUPER_ADMIN'
 
   // SMS API ships
@@ -94,7 +93,7 @@ export default function VesselCompliancePage() {
   // ── Fetch visits untuk compliance ───────────────────────────────────────────
 
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     let q = (supabase.from('visits') as any)
       .select('id, vessel_external_id, vessel_name, visit_date')
       .eq('visit_type', 'VESSEL_VISIT')

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell, CheckCircle, AlertTriangle, Star, Ship, ClipboardList, Filter } from 'lucide-react'
+import { Bell, CheckCircle, AlertTriangle, Star, Ship, ClipboardList } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/stores/authStore'

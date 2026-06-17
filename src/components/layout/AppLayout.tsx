@@ -211,7 +211,7 @@ function NotificationBell() {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
-  const { notifications, unreadCount, markAsRead, markAllRead } = useNotificationsData(user?.id)
+  const { notifications, unreadCount, markAllRead } = useNotificationsData(user?.id)
   const unread = unreadCount
   const recent = notifications.slice(0, 5)
 

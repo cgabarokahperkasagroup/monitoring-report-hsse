@@ -86,7 +86,6 @@ export default function ExternalInspectionListPage() {
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   const totalInspections = inspections.length
-  const completed = inspections.filter(i => i.status === 'COMPLETED').length
   const satisfactory = inspections.filter(i => i.result === 'SATISFACTORY').length
   const scheduled = inspections.filter(i => i.status === 'SCHEDULED').length
 

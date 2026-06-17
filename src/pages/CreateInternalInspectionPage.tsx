@@ -332,9 +332,6 @@ export default function CreateInternalInspectionPage() {
   // Step 1 validation
   const step1Valid = form.vessel_id && form.inspection_date && form.lead_inspector
 
-  // Step 2: any item filled
-  const step2Valid = filledCount > 0
-
   async function handleSubmit(e: FormEvent, isDraft: boolean) {
     e.preventDefault()
     if (!form.vessel_id) { error('Data Tidak Lengkap', 'Pilih kapal terlebih dahulu.'); return }

@@ -1470,18 +1470,6 @@ function ExtInspTypeTab({ onSave, onDelete }: { onSave: () => void; onDelete: ()
     !search || t.label.toLowerCase().includes(search.toLowerCase()) || t.code.toLowerCase().includes(search.toLowerCase())
   )
 
-  const colorOptions = [
-    { value: 'bg-blue-100 text-blue-800 border-blue-200', label: 'Biru' },
-    { value: 'bg-indigo-100 text-indigo-800 border-indigo-200', label: 'Nila' },
-    { value: 'bg-purple-100 text-purple-800 border-purple-200', label: 'Ungu' },
-    { value: 'bg-teal-100 text-teal-800 border-teal-200', label: 'Teal' },
-    { value: 'bg-green-100 text-green-800 border-green-200', label: 'Hijau' },
-    { value: 'bg-amber-100 text-amber-800 border-amber-200', label: 'Kuning' },
-    { value: 'bg-red-100 text-red-800 border-red-200', label: 'Merah' },
-    { value: 'bg-orange-100 text-orange-800 border-orange-200', label: 'Oranye' },
-    { value: 'bg-gray-100 text-gray-700 border-gray-200', label: 'Abu-abu' },
-  ]
-
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-3 gap-3">

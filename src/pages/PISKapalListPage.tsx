@@ -14,24 +14,6 @@ import { PIS_FINDING_STATUS_OPTIONS } from '@/data/masterOptions'
 import { formatDateShort } from '@/utils'
 import type { PISFindingStatus, PISPerusahaan } from '@/types'
 
-// ── KPI card ─────────────────────────────────────────────────────────────────
-
-function KPICard({ label, value, icon: Icon, color }: {
-  label: string; value: number; icon: React.ElementType; color: string
-}) {
-  return (
-    <div className={`bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center gap-4 border-l-4 ${color}`}>
-      <div className={`p-2 rounded-lg bg-opacity-10 ${color.replace('border-l-', 'bg-').replace('-500', '-100')}`}>
-        <Icon size={20} className={color.replace('border-l-', 'text-').replace('border-l-4 ', '')} />
-      </div>
-      <div>
-        <p className="text-2xl font-bold text-gray-900">{value}</p>
-        <p className="text-xs text-gray-500 mt-0.5">{label}</p>
-      </div>
-    </div>
-  )
-}
-
 // ── Status badge ──────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: PISFindingStatus }) {
@@ -97,10 +79,6 @@ export default function PISKapalListPage() {
     return [...s].sort()
   }, [findings])
 
-  const uniqueKapals = useMemo(() => {
-    const s = new Set(findings.map(f => f.nama_kapal))
-    return [...s].sort()
-  }, [findings])
 
   // ── Filtered set ──────────────────────────────────────────────────────────
   const filtered = useMemo(() => {

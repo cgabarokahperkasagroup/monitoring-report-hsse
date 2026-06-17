@@ -1,4 +1,4 @@
-import type { User, BusinessUnit, Fleet, Vessel, Site, Visit, Finding, FindingProgressEntry, FindingClosingRequest, VesselVisitCompliance, Notification, FindingCategory, InternalInspection, ExternalInspection, InspectionFinding, InternalInspectionSchedule, VisitSchedule, RoleDefinition } from '@/types'
+import type { User, BusinessUnit, Fleet, Vessel, Site, Visit, Finding, FindingProgressEntry, FindingClosingRequest, VesselVisitCompliance, Notification, FindingCategory, InternalInspection, ExternalInspection, InternalInspectionSchedule, VisitSchedule, RoleDefinition } from '@/types'
 
 export const mockBusinessUnits: BusinessUnit[] = [
   { id: 'bu-1', code: 'SHP', name: 'Shipping', description: 'Unit bisnis pelayaran', is_active: true, created_at: '2024-01-01' },

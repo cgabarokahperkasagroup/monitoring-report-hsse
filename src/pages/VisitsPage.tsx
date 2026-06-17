@@ -30,7 +30,7 @@ const PAGE_SIZE = 10
 export default function VisitsPage() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const { visits, loading } = useVisitsData()
+  const { visits } = useVisitsData()
   const [search, setSearch] = useState('')
   const [filterType, setFilterType] = useState('')
   const [filterStatus, setFilterStatus] = useState('')

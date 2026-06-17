@@ -116,7 +116,7 @@ export default function CreateVisitRealisasiPage() {
     const d = new Date(visitDate)
     const ym = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`
     const prefix = `FIND/${buCode}/${ym}/`
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const { data: existing } = await (supabase.from('findings') as any)
       .select('reference_no').like('reference_no', `${prefix}%`)
     let maxSeq = (existing ?? []).reduce((max: number, row: Record<string, unknown>) => {
@@ -128,7 +128,7 @@ export default function CreateVisitRealisasiPage() {
     for (const f of findings) {
       maxSeq += 1
       const reference_no = `FIND/${buCode}/${ym}/${String(maxSeq).padStart(3, '0')}`
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       await (supabase.from('findings') as any).insert({
         reference_no,
         visit_id: visitId,
@@ -184,7 +184,7 @@ export default function CreateVisitRealisasiPage() {
 
     // Link visit ke schedule → status COMPLETED
     if (result.id && schedule?.id) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       await (supabase.from('visit_schedules') as any)
         .update({ visit_id: result.id, status: 'COMPLETED' })
         .eq('id', schedule.id)
