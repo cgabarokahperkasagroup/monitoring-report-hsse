@@ -67,13 +67,20 @@ begin
     v_end        := nullif(payload ->> 'end_time', '')::time;
   exception when invalid_text_representation
                  or invalid_datetime_format
-                 or datetime_field_overflow then
+                 or datetime_field_overflow
+                 or numeric_value_out_of_range then
     raise exception 'OVF_BAD_PAYLOAD: format data tidak valid' using errcode = 'P0001';
   end;
 
   if v_client_id is null then
     raise exception 'OVF_BAD_PAYLOAD: client_submission_id wajib diisi' using errcode = 'P0001';
   end if;
+
+  -- Serialisasi seluruh pengiriman publik. Tanpa ini, panggilan yang datang
+  -- bersamaan sama-sama membaca hitungan lama: rate limit dan pemeriksaan
+  -- idempotensi keduanya bisa dilewati hanya dengan konkurensi biasa.
+  -- Pada volume yang dibatasi 50 kiriman/jam, serialisasi ini tidak terasa.
+  perform pg_advisory_xact_lock(hashtext('ovf:submit'));
 
   -- ── Idempotensi ──────────────────────────────────────────────────────────
   -- Submit kedua dengan id yang sama mengembalikan hasil yang lama, bukan
@@ -208,7 +215,7 @@ begin
       raise exception 'OVF_TOO_LARGE: maksimal 10 foto per temuan' using errcode = 'P0001';
     end if;
     for v_photo in select value from jsonb_array_elements_text(v_photos) loop
-      if position(c_photo_prefix in v_photo) <> 1 then
+      if v_photo is null or position(c_photo_prefix in v_photo) <> 1 then
         raise exception 'OVF_BAD_PAYLOAD: tautan foto tidak sah' using errcode = 'P0001';
       end if;
     end loop;
