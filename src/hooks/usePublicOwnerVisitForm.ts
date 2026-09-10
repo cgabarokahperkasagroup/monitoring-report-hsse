@@ -117,18 +117,29 @@ export function usePublicOwnerVisitForm() {
 
   const removeFinding = useCallback((key: string) => {
     setForm(prev => ({ ...prev, findings: prev.findings.filter(f => f.key !== key) }))
+    // Buang error temuan yang sudah dihapus, agar indeks tidak meleset setelah array difilter.
+    setErrors(prev => {
+      const next = { ...prev }
+      Object.keys(next).forEach(k => {
+        if (k.startsWith('finding_')) delete next[k]
+      })
+      return next
+    })
   }, [])
 
   const clearDraft = useCallback(() => {
+    const freshId = crypto.randomUUID()
     try {
       localStorage.removeItem(DRAFT_KEY)
-      localStorage.removeItem(SUBMISSION_KEY)
+      // Simpan id kiriman baru ke localStorage supaya "Coba Lagi" setelah reload
+      // masih pakai id yang sama dan tidak membuat duplikat kunjungan.
+      localStorage.setItem(SUBMISSION_KEY, freshId)
     } catch {
       /* abaikan */
     }
     setForm(emptyForm())
     setErrors({})
-    setClientSubmissionId(crypto.randomUUID())
+    setClientSubmissionId(freshId)
   }, [])
 
   // Cerminan aturan server, supaya kesalahan ketahuan sebelum data dikirim.
