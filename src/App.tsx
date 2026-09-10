@@ -6,6 +6,7 @@ import { AppLayout } from '@/components/layout/AppLayout'
 
 import LoginPage from '@/pages/LoginPage'
 import PrintVisitReportPage from '@/pages/PrintVisitReportPage'
+import PublicOwnerVisitFormPage from '@/pages/PublicOwnerVisitFormPage'
 import DashboardPage from '@/pages/DashboardPage'
 import VisitsPage from '@/pages/VisitsPage'
 import VisitDetailPage from '@/pages/VisitDetailPage'
@@ -89,6 +90,8 @@ export default function App() {
             <Route path="pis-findings/:id/edit" element={<EditPISKapalPage />} />
             <Route path="nfb-vetting" element={<NFBVettingPage />} />
           </Route>
+          {/* Form publik Owner Visit — tanpa login, di luar AppLayout & PublicRoute */}
+          <Route path="/owner-visit/form" element={<PublicOwnerVisitFormPage />} />
           {/* Print report — outside AppLayout, no sidebar/header */}
           <Route path="visits/:id/print" element={<ProtectedRoute><PrintVisitReportPage /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
