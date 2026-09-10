@@ -76,7 +76,7 @@ export function useFindingsData(options?: { visitId?: string; assignedTo?: strin
     if (options?.visitId) query = query.eq('visit_id', options.visitId)
     if (options?.assignedTo) query = query.eq('assigned_to', options.assignedTo)
     if (options?.ownerOnly) query = query.eq('is_owner_finding', true)
-    // A rejected visit is not a real event — its findings should never surface in the register.
+    // Kunjungan yang ditolak bukan peristiwa nyata — temuannya tidak boleh muncul di register.
     query = query.neq('visit.status', 'REJECTED')
 
     const { data, error: err } = await query
