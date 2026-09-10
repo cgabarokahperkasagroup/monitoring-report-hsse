@@ -30,7 +30,12 @@ export function VisitDetailsStep({ form, options, errors, setField }: Props) {
   function handleTarget(target: 'VESSEL' | 'SITE') {
     setField('target', target)
     // Kunjungan kapal selalu milik unit bisnis Shipping.
-    if (target === 'VESSEL' && shippingBU) setField('business_unit_id', shippingBU.id)
+    if (target === 'VESSEL' && shippingBU) {
+      setField('business_unit_id', shippingBU.id)
+    } else if (target === 'SITE') {
+      // Kosongkan unit bisnis untuk site agar pengguna memilih secara sadar.
+      setField('business_unit_id', '')
+    }
   }
 
   function handleShip(vesselId: string) {

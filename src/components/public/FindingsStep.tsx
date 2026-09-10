@@ -47,9 +47,13 @@ export function FindingsStep({
     const current = findings.find(f => f.key === key)?.photoUrls ?? []
     const uploaded: string[] = []
     let failed = 0
+    let skipped = 0
 
     for (const file of Array.from(files)) {
-      if (current.length + uploaded.length >= 10) break
+      if (current.length + uploaded.length >= 10) {
+        skipped += 1
+        continue
+      }
       try {
         uploaded.push(await uploadFindingPhoto(file))
       } catch {
@@ -59,10 +63,17 @@ export function FindingsStep({
 
     updateFinding(key, { photoUrls: [...current, ...uploaded] })
     setUploading(u => ({ ...u, [key]: false }))
+    const errors: string[] = []
+    if (skipped > 0) {
+      errors.push(`${skipped} foto tidak ditambahkan karena temuan sudah mencapai batas 10 foto.`)
+    }
     if (failed > 0) {
+      errors.push(`${failed} foto gagal diunggah. Coba pilih ulang, atau lanjut tanpa foto itu.`)
+    }
+    if (errors.length > 0) {
       setUploadError(e => ({
         ...e,
-        [key]: `${failed} foto gagal diunggah. Coba pilih ulang, atau lanjut tanpa foto itu.`,
+        [key]: errors.join(' '),
       }))
     }
   }
