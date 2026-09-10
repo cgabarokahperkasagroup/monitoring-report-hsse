@@ -55,6 +55,22 @@ const PHOTO_BUCKET = 'finding-photos'
 const PHOTO_FOLDER = 'public-owner-visit'
 const SIGNED_URL_TTL = 60 * 60 * 24 * 365
 
+// Pemetaan tipe MIME ke ekstensi file. compressImage dapat mengembalikan
+// berkas asli (PNG kecil, gambar non-JPEG, error, dll), jadi ekstensi
+// harus diambil dari tipe MIME aktual, bukan diasumsikan.
+const MIME_TO_EXT: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'image/heic': 'heic',
+  'image/heif': 'heif',
+}
+
+function getFileExtension(mimeType: string): string {
+  return MIME_TO_EXT[mimeType] || 'jpg'
+}
+
 // Klien di-generic ke schema 'monitoring-hsse', sedangkan kedua RPC ini hidup di
 // 'public' dan tidak ada di database.types.ts. Satu cast di sini menahan
 // ketidaknyamanan itu agar tidak menyebar ke pemanggil.
@@ -77,7 +93,8 @@ export async function fetchOwnerVisitOptions(): Promise<OwnerVisitOptions> {
 export async function uploadFindingPhoto(file: File): Promise<string> {
   const compressed = await compressImage(file)
   const random = crypto.randomUUID().replace(/-/g, '')
-  const path = `${PHOTO_FOLDER}/${random}.jpg`
+  const ext = getFileExtension(compressed.type)
+  const path = `${PHOTO_FOLDER}/${random}.${ext}`
 
   const { error: upErr } = await supabaseClient.storage
     .from(PHOTO_BUCKET)
