@@ -33,6 +33,8 @@ declare
   v_agenda      text;
   v_summary     text;
   v_participants text[];
+  v_other_participants jsonb;
+  v_op          text;
 
   v_prefix      text;
   v_ref         text;
@@ -88,20 +90,40 @@ begin
 
   -- ── Idempotensi ──────────────────────────────────────────────────────────
   -- Submit kedua dengan id yang sama mengembalikan hasil yang lama, bukan
-  -- membuat kunjungan kedua.
-  select v.id, v.reference_no
+  -- membuat kunjungan kedua. Dicari langsung dari public_form_submissions
+  -- (bukan lewat join ke visits) sebab visit_id bisa menjadi null (on delete
+  -- set null) kalau kunjungannya sudah dihapus — join akan membuatnya
+  -- seolah-olah submission ini belum pernah ada, lalu insert berikutnya
+  -- menabrak UNIQUE(client_submission_id) dengan error 23505 mentah.
+  select s.visit_id, v.reference_no
     into v_visit_id, v_ref
   from "monitoring-hsse".public_form_submissions s
-  join "monitoring-hsse".visits v on v.id = s.visit_id
+  left join "monitoring-hsse".visits v on v.id = s.visit_id
   where s.client_submission_id = v_client_id;
 
-  if v_visit_id is not null then
-    return jsonb_build_object('visit_id', v_visit_id, 'reference_no', v_ref, 'duplicate', true);
+  if found then
+    if v_visit_id is not null then
+      return jsonb_build_object('visit_id', v_visit_id, 'reference_no', v_ref, 'duplicate', true);
+    end if;
+
+    raise exception 'OVF_ALREADY_SUBMITTED: laporan ini sudah pernah diterima dan datanya sudah tidak tersedia lagi, sehingga tidak bisa dikirim ulang dengan id yang sama' using errcode = 'P0001';
   end if;
 
   -- ── Rate limit ───────────────────────────────────────────────────────────
-  v_ip := nullif(btrim(split_part(
-            coalesce(current_setting('request.headers', true)::json ->> 'x-forwarded-for', ''), ',', 1)), '');
+  -- Klien bebas mengirim x-forwarded-for apa saja; proksi (Cloudflare) hanya
+  -- MENAMBAHKAN alamat asli di ujung KANAN, tidak pernah menggantikan entri
+  -- yang sudah ada. Karena itu entri pertama tidak bisa dipercaya sama
+  -- sekali, sedangkan entri terakhir adalah yang ditambahkan oleh proksi
+  -- tepercaya kita sendiri. cf-connecting-ip lebih diutamakan lagi karena
+  -- Cloudflare mengesetnya sendiri dan membuang salinan yang dikirim klien.
+  v_ip := nullif(btrim(coalesce(
+            current_setting('request.headers', true)::json ->> 'cf-connecting-ip',
+            current_setting('request.headers', true)::json ->> 'x-real-ip',
+            (regexp_match(
+               coalesce(current_setting('request.headers', true)::json ->> 'x-forwarded-for', ''),
+               '([^,]*)$'))[1],
+            ''
+          )), '');
   v_ua := left(coalesce(current_setting('request.headers', true)::json ->> 'user-agent', ''), 500);
 
   -- "is not distinct from" menyatukan seluruh kiriman tanpa IP ke dalam satu
@@ -170,11 +192,25 @@ begin
     v_name := v_name || ' (' || v_position || ')';
   end if;
 
+  -- Peserta lain: dibatasi jumlah dan panjangnya. Klien memecah satu input
+  -- teks berdasarkan koma sehingga pengisi wajar tidak mungkin melampaui
+  -- batas ini — kalau sampai terjadi, itu tanda penyalahgunaan.
+  v_other_participants := case when jsonb_typeof(payload -> 'other_participants') = 'array'
+                               then payload -> 'other_participants' else '[]'::jsonb end;
+
+  if jsonb_array_length(v_other_participants) > 20 then
+    raise exception 'OVF_TOO_LARGE: maksimal 20 peserta lain' using errcode = 'P0001';
+  end if;
+
+  for v_op in select value from jsonb_array_elements_text(v_other_participants) loop
+    if length(v_op) > 120 then
+      raise exception 'OVF_TOO_LARGE: nama peserta lain melebihi 120 karakter' using errcode = 'P0001';
+    end if;
+  end loop;
+
   v_participants := array[v_name] || coalesce((
     select array_agg(btrim(t.x))
-    from jsonb_array_elements_text(
-           case when jsonb_typeof(payload -> 'other_participants') = 'array'
-                then payload -> 'other_participants' else '[]'::jsonb end) as t(x)
+    from jsonb_array_elements_text(v_other_participants) as t(x)
     where btrim(t.x) <> ''
   ), '{}'::text[]);
 
@@ -223,6 +259,12 @@ begin
       if v_photo is null or position(c_photo_prefix in v_photo) <> 1 then
         raise exception 'OVF_BAD_PAYLOAD: tautan foto tidak sah' using errcode = 'P0001';
       end if;
+      -- position() hanya memastikan awalan cocok, bukan panjangnya; tanpa
+      -- batas ini, sisa URL setelah awalan bisa berupa string sepanjang apa
+      -- pun.
+      if length(v_photo) > 500 then
+        raise exception 'OVF_TOO_LARGE: tautan foto melebihi 500 karakter' using errcode = 'P0001';
+      end if;
     end loop;
   end loop;
 
@@ -234,7 +276,11 @@ begin
   select coalesce(max(regexp_replace(v.reference_no, '^.*/', '')::int), 0) + 1
     into v_seq
   from "monitoring-hsse".visits v
-  where v.reference_no like v_prefix || '%'
+  -- starts_with(), bukan LIKE, karena v_prefix mengandung kode unit bisnis
+  -- yang bisa memuat karakter '_' atau '%' — kalau dipakai lewat LIKE,
+  -- keduanya akan diperlakukan sebagai wildcard dan bisa mencocokkan
+  -- prefix tetangga, menghasilkan nomor urut yang sudah dipakai.
+  where starts_with(v.reference_no, v_prefix)
     and regexp_replace(v.reference_no, '^.*/', '') ~ '^[0-9]+$';
 
   v_ref := v_prefix || lpad(v_seq::text, 3, '0');
@@ -259,7 +305,7 @@ begin
   select coalesce(max(regexp_replace(f.reference_no, '^.*/', '')::int), 0)
     into v_find_seq
   from "monitoring-hsse".findings f
-  where f.reference_no like v_find_prefix || '%'
+  where starts_with(f.reference_no, v_find_prefix)
     and regexp_replace(f.reference_no, '^.*/', '') ~ '^[0-9]+$';
 
   for v_rec in select value as j from jsonb_array_elements(v_findings) loop
