@@ -27,6 +27,8 @@ export default function PublicOwnerVisitFormPage() {
   const [reference, setReference] = useState<string | null>(null)
   // Honeypot: manusia tidak pernah melihat kolom ini, bot mengisinya.
   const [website, setWebsite] = useState('')
+  // Agregat dari FindingsStep: masih ada foto yang belum selesai diunggah?
+  const [photosUploading, setPhotosUploading] = useState(false)
 
   useEffect(() => {
     fetchOwnerVisitOptions()
@@ -44,6 +46,13 @@ export default function PublicOwnerVisitFormPage() {
   function goBack() {
     setStep(s => (s === 3 ? 2 : 1))
     window.scrollTo({ top: 0 })
+  }
+
+  function handleClearDraft() {
+    if (window.confirm('Kosongkan semua isian? Data yang sudah diketik akan hilang dan tidak bisa dikembalikan.')) {
+      clearDraft()
+      setStep(1)
+    }
   }
 
   async function handleSubmit() {
@@ -133,19 +142,28 @@ export default function PublicOwnerVisitFormPage() {
               findings={form.findings} options={options} errors={errors}
               visitDate={form.visit_date}
               addFinding={addFinding} updateFinding={updateFinding} removeFinding={removeFinding}
+              onUploadingChange={setPhotosUploading}
             />
           )}
           {step === 3 && <ReviewStep form={form} options={options} />}
 
           <input
-            type="text" tabIndex={-1} autoComplete="off" aria-hidden="true"
-            className="hidden" value={website} onChange={e => setWebsite(e.target.value)}
+            type="text" tabIndex={-1} autoComplete="off"
+            className="absolute w-px h-px -m-px p-0 overflow-hidden whitespace-nowrap border-0"
+            style={{ clip: 'rect(0,0,0,0)' }}
+            value={website} onChange={e => setWebsite(e.target.value)}
           />
         </div>
 
         {submitError && (
           <p className="px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
             {submitError}
+          </p>
+        )}
+
+        {photosUploading && (
+          <p className="px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700">
+            Masih ada foto yang diunggah. Tunggu sebentar sebelum melanjutkan.
           </p>
         )}
 
@@ -157,19 +175,25 @@ export default function PublicOwnerVisitFormPage() {
           ) : <span />}
 
           {step < 3 ? (
-            <Button onClick={goNext}>
+            <Button onClick={goNext} disabled={photosUploading}>
               Lanjut <ArrowRight size={16} />
             </Button>
           ) : (
-            <Button onClick={() => void handleSubmit()} loading={submitting}>
+            <Button onClick={() => void handleSubmit()} loading={submitting} disabled={photosUploading}>
               <Send size={16} /> {submitError ? 'Coba Lagi' : 'Kirim Laporan'}
             </Button>
           )}
         </div>
 
-        <p className="text-center text-xs text-gray-400 pb-6">
+        <p className="text-center text-xs text-gray-400">
           Isian tersimpan otomatis di perangkat ini sampai berhasil dikirim.
         </p>
+        <button
+          type="button" onClick={handleClearDraft}
+          className="text-center text-xs text-gray-400 underline underline-offset-2 hover:text-gray-600 pb-6"
+        >
+          Kosongkan isian
+        </button>
       </div>
     </div>
   )

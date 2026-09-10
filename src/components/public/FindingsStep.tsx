@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Plus, Trash2, ImagePlus, X } from 'lucide-react'
 import { Input, Textarea, Select } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,8 @@ interface Props {
   addFinding: () => void
   updateFinding: (key: string, patch: Partial<FindingDraft>) => void
   removeFinding: (key: string) => void
+  // Agar halaman bisa mengunci Lanjut/Kirim selagi ada foto yang masih diunggah.
+  onUploadingChange?: (uploading: boolean) => void
 }
 
 const PRIORITIES: { value: FindingPriority; label: string }[] = [
@@ -34,10 +36,18 @@ function dueDateText(visitDate: string, priority: FindingPriority): string {
 
 export function FindingsStep({
   findings, options, errors, visitDate, addFinding, updateFinding, removeFinding,
+  onUploadingChange,
 }: Props) {
   // Status unggah per temuan: satu foto gagal tidak boleh menggugurkan laporan.
   const [uploading, setUploading] = useState<Record<string, boolean>>({})
   const [uploadError, setUploadError] = useState<Record<string, string>>({})
+
+  // Hanya status gabungan ("ada yang masih diunggah?") yang perlu diketahui halaman.
+  // Dibersihkan saat unmount (mis. kembali ke langkah 1) agar halaman tidak terkunci selamanya.
+  useEffect(() => {
+    onUploadingChange?.(Object.values(uploading).some(Boolean))
+    return () => onUploadingChange?.(false)
+  }, [uploading, onUploadingChange])
 
   async function handlePhotos(key: string, files: FileList | null) {
     if (!files || files.length === 0) return
@@ -63,17 +73,17 @@ export function FindingsStep({
 
     updateFinding(key, { photoUrls: [...current, ...uploaded] })
     setUploading(u => ({ ...u, [key]: false }))
-    const errors: string[] = []
+    const messages: string[] = []
     if (skipped > 0) {
-      errors.push(`${skipped} foto tidak ditambahkan karena temuan sudah mencapai batas 10 foto.`)
+      messages.push(`${skipped} foto tidak ditambahkan karena temuan sudah mencapai batas 10 foto.`)
     }
     if (failed > 0) {
-      errors.push(`${failed} foto gagal diunggah. Coba pilih ulang, atau lanjut tanpa foto itu.`)
+      messages.push(`${failed} foto gagal diunggah. Coba pilih ulang, atau lanjut tanpa foto itu.`)
     }
-    if (errors.length > 0) {
+    if (messages.length > 0) {
       setUploadError(e => ({
         ...e,
-        [key]: errors.join(' '),
+        [key]: messages.join(' '),
       }))
     }
   }

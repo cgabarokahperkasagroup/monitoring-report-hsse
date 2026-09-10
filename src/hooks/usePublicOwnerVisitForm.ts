@@ -147,6 +147,10 @@ export function usePublicOwnerVisitForm() {
   const validateStep = useCallback((step: 1 | 2): boolean => {
     const e: Record<string, string> = {}
     const today = getLocalToday()
+    // Cerminan batas 90 hari di server (lihat OVF_INVALID_DATE).
+    const minVisitDate = new Date()
+    minVisitDate.setDate(minVisitDate.getDate() - 90)
+    const minVisitDateStr = minVisitDate.toLocaleDateString('en-CA')
 
     if (step === 1) {
       if (!form.reporter_name.trim()) e.reporter_name = 'Nama pengisi wajib diisi'
@@ -157,6 +161,7 @@ export function usePublicOwnerVisitForm() {
       if (form.target === 'SITE' && !form.site_id) e.site_id = 'Lokasi wajib dipilih'
       if (!form.visit_date) e.visit_date = 'Tanggal kunjungan wajib diisi'
       else if (form.visit_date > today) e.visit_date = 'Tanggal tidak boleh di masa depan'
+      else if (form.visit_date < minVisitDateStr) e.visit_date = 'Tanggal tidak boleh lebih dari 90 hari yang lalu'
       if (form.agenda.length > 4000) e.agenda = 'Maksimal 4000 karakter'
       if (form.summary.length > 4000) e.summary = 'Maksimal 4000 karakter'
     }

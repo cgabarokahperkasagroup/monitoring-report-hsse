@@ -5,7 +5,7 @@ import type { Finding, FindingProgressEntry, FindingClosingRequest } from '@/typ
 
 const FINDING_SELECT = `
   *,
-  visit:visits(id, reference_no, visit_type, visit_date),
+  visit:visits!inner(id, reference_no, visit_type, visit_date, status),
   business_unit:business_units_mh(*),
   assigned_to_user:users!findings_assigned_to_fkey(id, full_name, email, role, is_active, must_change_password, created_at, updated_at),
   created_by_user:users!findings_created_by_fkey(id, full_name, email, role, is_active, must_change_password, created_at, updated_at),
@@ -76,6 +76,8 @@ export function useFindingsData(options?: { visitId?: string; assignedTo?: strin
     if (options?.visitId) query = query.eq('visit_id', options.visitId)
     if (options?.assignedTo) query = query.eq('assigned_to', options.assignedTo)
     if (options?.ownerOnly) query = query.eq('is_owner_finding', true)
+    // A rejected visit is not a real event — its findings should never surface in the register.
+    query = query.neq('visit.status', 'REJECTED')
 
     const { data, error: err } = await query
     if (err) { setError(err.message); setLoading(false); return }

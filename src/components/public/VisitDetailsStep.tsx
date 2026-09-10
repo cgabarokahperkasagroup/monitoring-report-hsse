@@ -14,7 +14,7 @@ interface Props {
 }
 
 export function VisitDetailsStep({ form, options, errors, setField }: Props) {
-  const { ships, loading: shipsLoading } = useShips()
+  const { ships, loading: shipsLoading, error: shipsError } = useShips()
   const shippingBU = options.business_units.find(b => b.code === 'SHP')
   const sites = options.sites.filter(s => s.business_unit_id === form.business_unit_id)
   const today = getLocalToday()
@@ -83,13 +83,20 @@ export function VisitDetailsStep({ form, options, errors, setField }: Props) {
       </div>
 
       {form.target === 'VESSEL' ? (
-        <Select
-          id="vessel" label="Kapal" required searchable
-          value={form.vessel_external_id} error={errors.vessel_external_id}
-          onChange={e => handleShip(e.target.value)}
-          options={shipOptions(ships)}
-          placeholder={shipsLoading ? 'Memuat daftar kapal…' : 'Pilih kapal'}
-        />
+        <div className="flex flex-col gap-1.5">
+          <Select
+            id="vessel" label="Kapal" required searchable
+            value={form.vessel_external_id} error={errors.vessel_external_id}
+            onChange={e => handleShip(e.target.value)}
+            options={shipOptions(ships)}
+            placeholder={shipsLoading ? 'Memuat daftar kapal…' : 'Pilih kapal'}
+          />
+          {shipsError && (
+            <p className="text-xs text-red-600">
+              Gagal memuat daftar kapal. Periksa koneksi lalu muat ulang halaman.
+            </p>
+          )}
+        </div>
       ) : (
         <>
           <Select
