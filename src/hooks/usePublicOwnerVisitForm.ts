@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FindingPriority, SubmitPayload } from '@/services/publicOwnerVisit'
+import { getLocalToday } from '@/utils'
 
 const DRAFT_KEY = 'owner-visit-public-draft-v1'
 const SUBMISSION_KEY = 'owner-visit-public-submission-id-v1'
@@ -36,7 +37,7 @@ function emptyForm(): FormState {
     reporter_name: '', reporter_position: '', other_participants: '',
     business_unit_id: '', target: 'VESSEL',
     site_id: '', vessel_external_id: '', vessel_name: '', fleet_external_id: '',
-    visit_date: new Date().toISOString().slice(0, 10),
+    visit_date: getLocalToday(),
     start_time: '', end_time: '', agenda: '', summary: '',
     findings: [],
   }
@@ -145,7 +146,7 @@ export function usePublicOwnerVisitForm() {
   // Cerminan aturan server, supaya kesalahan ketahuan sebelum data dikirim.
   const validateStep = useCallback((step: 1 | 2): boolean => {
     const e: Record<string, string> = {}
-    const today = new Date().toISOString().slice(0, 10)
+    const today = getLocalToday()
 
     if (step === 1) {
       if (!form.reporter_name.trim()) e.reporter_name = 'Nama pengisi wajib diisi'

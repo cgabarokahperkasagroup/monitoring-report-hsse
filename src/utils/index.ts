@@ -148,6 +148,12 @@ export function getDaysDiff(target: string): number {
   return Math.ceil((targetDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
 }
 
+// Tanggal hari ini menurut zona waktu perangkat (YYYY-MM-DD), bukan UTC —
+// supaya pengisi dini hari WITA/WIT tidak melihat "hari ini" mundur satu hari.
+export function getLocalToday(): string {
+  return new Date().toLocaleDateString('en-CA')
+}
+
 export function canCreateVisit(role: UserRole, visitType: string): boolean {
   if (role === 'SUPER_ADMIN') return true
   if (visitType === 'OWNER_VISIT') return role === 'MANAGEMENT'

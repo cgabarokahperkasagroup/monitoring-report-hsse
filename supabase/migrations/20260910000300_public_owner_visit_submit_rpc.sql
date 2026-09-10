@@ -18,6 +18,10 @@ declare
   v_visit_date  date;
   v_start       time;
   v_end         time;
+  -- Database berjalan di UTC, tapi "hari ini" harus dihitung dari zona waktu
+  -- Indonesia paling depan (WIT, UTC+9) supaya pengisi dini hari WITA/WIB
+  -- tidak ditolak karena tanggal lokalnya dianggap "di masa depan".
+  v_today_wit   date;
 
   v_bu_code     text;
   v_fleet_id    uuid;
@@ -144,9 +148,10 @@ begin
   end if;
 
   -- ── Tanggal ──────────────────────────────────────────────────────────────
+  v_today_wit := (now() at time zone 'Asia/Jayapura')::date;
   if v_visit_date is null
-     or v_visit_date > current_date
-     or v_visit_date < current_date - 90 then
+     or v_visit_date > v_today_wit
+     or v_visit_date < v_today_wit - 90 then
     raise exception 'OVF_INVALID_DATE: tanggal kunjungan di luar rentang yang diizinkan' using errcode = 'P0001';
   end if;
 

@@ -4,6 +4,7 @@ import { useShips, shipOptions, findShipById } from '@/hooks/useShips'
 import type { FormState } from '@/hooks/usePublicOwnerVisitForm'
 import type { OwnerVisitOptions } from '@/services/publicOwnerVisit'
 import { cn } from '@/lib/utils'
+import { getLocalToday } from '@/utils'
 
 interface Props {
   form: FormState
@@ -16,7 +17,7 @@ export function VisitDetailsStep({ form, options, errors, setField }: Props) {
   const { ships, loading: shipsLoading } = useShips()
   const shippingBU = options.business_units.find(b => b.code === 'SHP')
   const sites = options.sites.filter(s => s.business_unit_id === form.business_unit_id)
-  const today = new Date().toISOString().slice(0, 10)
+  const today = getLocalToday()
 
   // 'VESSEL' adalah pilihan awal, jadi tombolnya mungkin tidak pernah diklik.
   // Tanpa ini business_unit_id tetap kosong dan validasi menolak tanpa ada
