@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useState, useEffect } from 'react'
-import { Plus, Edit, Trash2, Building2, Ship, MapPin, Tag, Layers, Search, ShieldCheck, Flag, AlertTriangle, List, Shield, Loader2, AlertCircle, ClipboardList, ChevronDown, ChevronUp, GripVertical, RotateCcw, Info } from 'lucide-react'
+import { Plus, Edit, Trash2, Building2, Ship, MapPin, Tag, Layers, Search, ShieldCheck, Flag, AlertTriangle, List, Shield, Loader2, AlertCircle, ClipboardList, ChevronDown, ChevronUp, Info } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Modal } from '@/components/ui/modal'
@@ -29,8 +29,7 @@ type DBPISPerusahaan = { id: string; code: string; name: string; is_active: bool
 type DBPISTemuanType = { id: string; code: string; label: string; is_active: boolean }
 type DBPISKategori = { id: string; name: string; is_active: boolean }
 type DBExtInspType = { id: string; code: string; label: string; is_active: boolean }
-import { useChecklistStore, type ChecklistArea, type ChecklistGuidanceItem } from '@/stores/checklistStore'
-import type { PIC } from '@/data/vesselInspectionConstants'
+import { PREP_OFFICE_ITEMS, PREP_VESSEL_ITEMS, INSPECTION_AREA_GROUPS } from '@/data/vesselInspectionConstants'
 
 type Tab = 'bu' | 'fleets' | 'vessels' | 'sites' | 'categories' | 'roles'
   | 'pis_perusahaan' | 'pis_temuan' | 'pis_kategori' | 'ext_insp_type'
@@ -41,7 +40,6 @@ export default function MasterDataPage() {
   const { success } = useToast()
   const { ships } = useShips()
   const uniqueFleetCount = new Set(ships.map(s => s.fleet.id)).size
-  const checklist = useChecklistStore()
   const [counts, setCounts] = useState({ bu: 0, sites: 0, categories: 0, pis_perusahaan: 0, pis_temuan: 0, pis_kategori: 0, ext_insp: 0 })
 
   useEffect(() => {
@@ -86,8 +84,8 @@ export default function MasterDataPage() {
     {
       label: 'Checklist Inspeksi Kapal',
       tabs: [
-        { id: 'checklist_prep' as Tab, label: 'Persiapan Kunjungan', icon: ClipboardList, count: checklist.prepOffice.length + checklist.prepVessel.length },
-        { id: 'checklist_area' as Tab, label: 'Area Inspeksi', icon: List, count: checklist.areas.length },
+        { id: 'checklist_prep' as Tab, label: 'Persiapan Kunjungan', icon: ClipboardList, count: PREP_OFFICE_ITEMS.length + PREP_VESSEL_ITEMS.length },
+        { id: 'checklist_area' as Tab, label: 'Area Inspeksi', icon: List, count: INSPECTION_AREA_GROUPS.length },
       ],
     },
   ]
@@ -1559,379 +1557,117 @@ function ExtInspTypeTab({ onSave, onDelete }: { onSave: () => void; onDelete: ()
   )
 }
 
-// ─── Checklist Persiapan Kunjungan ────────────────────────────────────────────
+// ─── Checklist Inspeksi Kapal (baca-saja) ──────────────────────────────────────
+//
+// Dulu tab ini bisa diedit, tetapi suntingan hanya tersimpan di localStorage
+// browser admin dan tidak dipakai di mana pun: halaman kunjungan & cetak memakai
+// daftar di src/data/vesselInspectionConstants.ts. Jawaban kunjungan disimpan
+// per nomor urut, jadi mengubah daftar akan menggeser jawaban kunjungan lama.
+// Karena itu tab ini kini menampilkan daftar yang benar-benar dipakai, tanpa edit.
 
-function ChecklistPrepTab() {
-  const store = useChecklistStore()
-  const { success } = useToast()
-  const [officeModal, setOfficeModal] = useState<{ open: boolean; idx: number | null; value: string }>({ open: false, idx: null, value: '' })
-  const [vesselModal, setVesselModal] = useState<{ open: boolean; idx: number | null; value: string }>({ open: false, idx: null, value: '' })
-
-  function saveOffice() {
-    const val = officeModal.value.trim()
-    if (!val) return
-    if (officeModal.idx === null) {
-      store.addPrepOffice(val); success('Item persiapan kantor ditambahkan', '')
-    } else {
-      store.updatePrepOffice(officeModal.idx, val); success('Item persiapan kantor diperbarui', '')
-    }
-    setOfficeModal({ open: false, idx: null, value: '' })
-  }
-
-  function saveVessel() {
-    const val = vesselModal.value.trim()
-    if (!val) return
-    if (vesselModal.idx === null) {
-      store.addPrepVessel(val); success('Item persiapan kapal ditambahkan', '')
-    } else {
-      store.updatePrepVessel(vesselModal.idx, val); success('Item persiapan kapal diperbarui', '')
-    }
-    setVesselModal({ open: false, idx: null, value: '' })
-  }
-
+function ChecklistReadOnlyNote() {
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
-        <Info size={14} className="shrink-0" />
-        Perubahan pada checklist persiapan akan diterapkan pada form inspeksi kapal yang baru dibuat.
-      </div>
-
-      <div className="grid grid-cols-3 gap-3">
-        <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm border-l-4" style={{ borderLeftColor: '#1B3A6B' }}>
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Total Item</p>
-          <p className="text-2xl font-bold text-[#1B3A6B] mt-0.5">{store.prepOffice.length + store.prepVessel.length}</p>
-        </div>
-        <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm border-l-4" style={{ borderLeftColor: '#2563EB' }}>
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Persiapan Kantor</p>
-          <p className="text-2xl font-bold text-blue-700 mt-0.5">{store.prepOffice.length}</p>
-        </div>
-        <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm border-l-4" style={{ borderLeftColor: '#7C3AED' }}>
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Persiapan di Kapal</p>
-          <p className="text-2xl font-bold text-purple-700 mt-0.5">{store.prepVessel.length}</p>
-        </div>
-      </div>
-
-      {/* Section A */}
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-semibold text-gray-800">A. Persiapan di Kantor</h3>
-            <p className="text-xs text-gray-500 mt-0.5">Checklist yang harus dilakukan sebelum berangkat ke kapal</p>
-          </div>
-          <Button size="sm" onClick={() => setOfficeModal({ open: true, idx: null, value: '' })}><Plus size={14} /> Tambah Item</Button>
-        </div>
-        <Card>
-          <CardContent className="p-0">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-600 w-10">#</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Item Checklist</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-600 text-right w-36">Urutan & Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {store.prepOffice.map((item, idx) => (
-                  <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50/70">
-                    <td className="px-5 py-3 text-gray-400 font-mono text-xs">{idx + 1}</td>
-                    <td className="px-4 py-3 text-gray-700">{item}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => store.movePrepOffice(idx, 'up')} disabled={idx === 0}><ChevronUp size={13} /></Button>
-                        <Button variant="ghost" size="sm" onClick={() => store.movePrepOffice(idx, 'down')} disabled={idx === store.prepOffice.length - 1}><ChevronDown size={13} /></Button>
-                        <Button variant="ghost" size="sm" onClick={() => setOfficeModal({ open: true, idx, value: item })}><Edit size={13} /></Button>
-                        <Button variant="ghost" size="sm" onClick={() => { store.deletePrepOffice(idx); success('Item dihapus', '') }}><Trash2 size={13} className="text-red-500" /></Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {store.prepOffice.length === 0 && (
-                  <tr><td colSpan={3} className="px-5 py-8 text-center text-sm text-gray-400">Belum ada item.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Section B */}
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-semibold text-gray-800">B. Persiapan di Atas Kapal</h3>
-            <p className="text-xs text-gray-500 mt-0.5">Checklist kegiatan yang dilakukan setibanya di atas kapal</p>
-          </div>
-          <Button size="sm" onClick={() => setVesselModal({ open: true, idx: null, value: '' })}><Plus size={14} /> Tambah Item</Button>
-        </div>
-        <Card>
-          <CardContent className="p-0">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-600 w-10">#</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Item Checklist</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-gray-600 text-right w-36">Urutan & Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {store.prepVessel.map((item, idx) => (
-                  <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50/70">
-                    <td className="px-5 py-3 text-gray-400 font-mono text-xs">{idx + 1}</td>
-                    <td className="px-4 py-3 text-gray-700">{item}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => store.movePrepVessel(idx, 'up')} disabled={idx === 0}><ChevronUp size={13} /></Button>
-                        <Button variant="ghost" size="sm" onClick={() => store.movePrepVessel(idx, 'down')} disabled={idx === store.prepVessel.length - 1}><ChevronDown size={13} /></Button>
-                        <Button variant="ghost" size="sm" onClick={() => setVesselModal({ open: true, idx, value: item })}><Edit size={13} /></Button>
-                        <Button variant="ghost" size="sm" onClick={() => { store.deletePrepVessel(idx); success('Item dihapus', '') }}><Trash2 size={13} className="text-red-500" /></Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {store.prepVessel.length === 0 && (
-                  <tr><td colSpan={3} className="px-5 py-8 text-center text-sm text-gray-400">Belum ada item.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="flex justify-end">
-        <Button variant="ghost" size="sm" onClick={() => { store.reset(); success('Checklist dikembalikan ke default', '') }} className="text-gray-500 hover:text-red-600">
-          <RotateCcw size={13} /> Reset ke Default
-        </Button>
-      </div>
-
-      <Modal open={officeModal.open} onClose={() => setOfficeModal({ open: false, idx: null, value: '' })}
-        title={officeModal.idx === null ? 'Tambah Item Persiapan Kantor' : 'Edit Item Persiapan Kantor'} size="sm"
-        footer={<><Button variant="ghost" onClick={() => setOfficeModal({ open: false, idx: null, value: '' })}>Batal</Button><Button onClick={saveOffice}>{officeModal.idx === null ? 'Tambah' : 'Simpan'}</Button></>}>
-        <Textarea label="Item Checklist" required value={officeModal.value}
-          onChange={e => setOfficeModal(s => ({ ...s, value: e.target.value }))}
-          placeholder="Contoh: Mempelajari laporan kunjungan manajemen yang lalu" rows={3} />
-      </Modal>
-
-      <Modal open={vesselModal.open} onClose={() => setVesselModal({ open: false, idx: null, value: '' })}
-        title={vesselModal.idx === null ? 'Tambah Item Persiapan di Kapal' : 'Edit Item Persiapan di Kapal'} size="sm"
-        footer={<><Button variant="ghost" onClick={() => setVesselModal({ open: false, idx: null, value: '' })}>Batal</Button><Button onClick={saveVessel}>{vesselModal.idx === null ? 'Tambah' : 'Simpan'}</Button></>}>
-        <Textarea label="Item Checklist" required value={vesselModal.value}
-          onChange={e => setVesselModal(s => ({ ...s, value: e.target.value }))}
-          placeholder="Contoh: Rapat pembuka / Memperkenalkan diri" rows={3} />
-      </Modal>
+    <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
+      <Info size={14} className="shrink-0 mt-0.5" />
+      <span>
+        Ini daftar baku yang dipakai form laporan kunjungan dan laporan cetak. Daftar ini tidak dapat diubah dari
+        aplikasi karena jawaban setiap kunjungan tersimpan per nomor urut — mengubah daftar akan menggeser jawaban
+        kunjungan yang sudah terisi. Hubungi pengembang bila checklist perlu direvisi.
+      </span>
     </div>
   )
 }
 
-// ─── Checklist Area Inspeksi ──────────────────────────────────────────────────
-
-const PIC_OPTIONS: { value: PIC; label: string }[] = [
-  { value: 'none', label: 'Tanpa PIC khusus' },
-  { value: 'kapal', label: 'PIC Kapal' },
-  { value: 'darat', label: 'PIC Darat' },
-]
-
-interface AreaModalState {
-  open: boolean
-  areaId: string | null
-  areaName: string
-  editingItem: ChecklistGuidanceItem | null
-  itemPic: PIC
-  itemGuidance: string
-  mode: 'area' | 'item'
+function ChecklistPrepTab() {
+  const sections = [
+    { title: 'A. Persiapan di Kantor', desc: 'Checklist yang harus dilakukan sebelum berangkat ke kapal', items: PREP_OFFICE_ITEMS },
+    { title: 'B. Persiapan di Kapal', desc: 'Checklist kegiatan yang dilakukan setibanya di atas kapal', items: PREP_VESSEL_ITEMS },
+  ]
+  return (
+    <div className="flex flex-col gap-6">
+      <ChecklistReadOnlyNote />
+      {sections.map(sec => (
+        <div key={sec.title} className="flex flex-col gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-800">{sec.title}</h3>
+            <p className="text-xs text-gray-500 mt-0.5">{sec.desc}</p>
+          </div>
+          <Card>
+            <CardContent className="p-0">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 bg-gray-50">
+                    <th className="text-left px-5 py-3 text-xs font-semibold text-gray-600 w-10">#</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600">Item Checklist</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sec.items.map((item, idx) => (
+                    <tr key={idx} className="border-b border-gray-100">
+                      <td className="px-5 py-3 text-gray-400 font-mono text-xs">{idx + 1}</td>
+                      <td className="px-4 py-3 text-gray-700">{item}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 function ChecklistAreaTab() {
-  const store = useChecklistStore()
-  const { success } = useToast()
-  const [expandedAreaId, setExpandedAreaId] = useState<string | null>(null)
-  const [modal, setModal] = useState<AreaModalState>({
-    open: false, areaId: null, areaName: '', editingItem: null, itemPic: 'none', itemGuidance: '', mode: 'area',
-  })
-
-  function openAddArea() {
-    setModal({ open: true, areaId: null, areaName: '', editingItem: null, itemPic: 'none', itemGuidance: '', mode: 'area' })
-  }
-  function openEditArea(area: ChecklistArea) {
-    setModal({ open: true, areaId: area.id, areaName: area.name, editingItem: null, itemPic: 'none', itemGuidance: '', mode: 'area' })
-  }
-  function openAddItem(areaId: string) {
-    setModal({ open: true, areaId, areaName: '', editingItem: null, itemPic: 'none', itemGuidance: '', mode: 'item' })
-  }
-  function openEditItem(areaId: string, item: ChecklistGuidanceItem) {
-    setModal({ open: true, areaId, areaName: '', editingItem: item, itemPic: item.pic, itemGuidance: item.guidance, mode: 'item' })
-  }
-
-  function handleSave() {
-    if (modal.mode === 'area') {
-      const name = modal.areaName.trim()
-      if (!name) return
-      if (modal.areaId) {
-        store.updateAreaName(modal.areaId, name); success('Nama area diperbarui', '')
-      } else {
-        store.addArea(name); success('Area baru ditambahkan', '')
-      }
-    } else {
-      if (!modal.areaId || !modal.itemGuidance.trim()) return
-      if (modal.editingItem) {
-        store.updateGuidanceItem(modal.areaId, modal.editingItem.id, modal.itemPic, modal.itemGuidance.trim())
-        success('Item panduan diperbarui', '')
-      } else {
-        store.addGuidanceItem(modal.areaId, modal.itemPic, modal.itemGuidance.trim())
-        success('Item panduan ditambahkan', '')
-      }
-    }
-    setModal(s => ({ ...s, open: false }))
-  }
-
-  const totalItems = store.areas.reduce((sum, a) => sum + a.items.length, 0)
-
+  const [expanded, setExpanded] = useState<number | null>(null)
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
-        <Info size={14} className="shrink-0" />
-        Area dan panduan inspeksi yang dikelola di sini akan digunakan pada form inspeksi kapal yang baru dibuat.
-      </div>
-
-      <div className="grid grid-cols-3 gap-3">
-        <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm border-l-4" style={{ borderLeftColor: '#1B3A6B' }}>
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Total Area</p>
-          <p className="text-2xl font-bold text-[#1B3A6B] mt-0.5">{store.areas.length}</p>
-        </div>
-        <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm border-l-4" style={{ borderLeftColor: '#2563EB' }}>
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Total Item Panduan</p>
-          <p className="text-2xl font-bold text-blue-700 mt-0.5">{totalItems}</p>
-        </div>
-        <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm border-l-4" style={{ borderLeftColor: '#7C3AED' }}>
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Rata-rata per Area</p>
-          <p className="text-2xl font-bold text-purple-700 mt-0.5">
-            {store.areas.length ? (totalItems / store.areas.length).toFixed(1) : '0'}
-          </p>
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-gray-500">Klik pada area untuk melihat dan mengelola item panduan inspeksi.</p>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => { store.reset(); success('Checklist dikembalikan ke default', '') }} className="text-gray-500 hover:text-red-600">
-            <RotateCcw size={13} /> Reset ke Default
-          </Button>
-          <Button size="sm" onClick={openAddArea}><Plus size={14} /> Tambah Area</Button>
-        </div>
-      </div>
-
+      <ChecklistReadOnlyNote />
       <div className="flex flex-col gap-2">
-        {store.areas.map((area, aIdx) => {
-          const isExpanded = expandedAreaId === area.id
+        {INSPECTION_AREA_GROUPS.map((area, aIdx) => {
+          const isExpanded = expanded === aIdx
           return (
-            <Card key={area.id} className="overflow-hidden">
-              <div className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 select-none"
-                onClick={() => setExpandedAreaId(isExpanded ? null : area.id)}>
-                <GripVertical size={14} className="text-gray-300 shrink-0" />
-                <div className="flex-1 min-w-0 flex items-center gap-2">
-                  <span className="text-xs font-mono font-bold text-[#1B3A6B] w-6 shrink-0">{aIdx + 1}</span>
-                  <span className="font-medium text-gray-800 text-sm truncate">{area.name}</span>
-                  <span className="badge bg-gray-100 text-gray-500 border-gray-200 text-[11px] shrink-0">{area.items.length} item</span>
-                </div>
-                <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
-                  <Button variant="ghost" size="sm" onClick={() => store.moveArea(area.id, 'up')} disabled={aIdx === 0}><ChevronUp size={13} /></Button>
-                  <Button variant="ghost" size="sm" onClick={() => store.moveArea(area.id, 'down')} disabled={aIdx === store.areas.length - 1}><ChevronDown size={13} /></Button>
-                  <Button variant="ghost" size="sm" onClick={() => openEditArea(area)}><Edit size={13} /></Button>
-                  <Button variant="ghost" size="sm" onClick={() => { store.deleteArea(area.id); success('Area dihapus', ''); if (isExpanded) setExpandedAreaId(null) }}>
-                    <Trash2 size={13} className="text-red-500" />
-                  </Button>
-                  {isExpanded ? <ChevronUp size={14} className="text-gray-400 ml-1" /> : <ChevronDown size={14} className="text-gray-400 ml-1" />}
-                </div>
-              </div>
-
+            <Card key={area.name} className="overflow-hidden">
+              <button
+                type="button"
+                className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50"
+                onClick={() => setExpanded(isExpanded ? null : aIdx)}
+              >
+                <span className="text-xs font-mono font-bold text-[#1B3A6B] w-6 shrink-0">{aIdx + 1}</span>
+                <span className="flex-1 min-w-0 font-medium text-gray-800 text-sm truncate">{area.name}</span>
+                <span className="badge bg-gray-100 text-gray-500 border-gray-200 text-[11px] shrink-0">{area.items.length} item</span>
+                {isExpanded ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
+              </button>
               {isExpanded && (
-                <div className="border-t border-gray-100">
-                  <div className="px-4 py-2 bg-gray-50 flex items-center justify-between">
-                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Item Panduan Inspeksi</span>
-                    <Button size="sm" onClick={() => openAddItem(area.id)} className="h-7 text-xs px-2.5">
-                      <Plus size={12} /> Tambah Item
-                    </Button>
-                  </div>
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-100 bg-gray-50/50">
-                        <th className="text-left px-5 py-2 text-xs font-semibold text-gray-500 w-8">#</th>
-                        <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500">Panduan Pemeriksaan</th>
-                        <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 w-32">PIC</th>
-                        <th className="px-3 py-2 text-xs font-semibold text-gray-500 text-right w-28">Aksi</th>
+                <table className="w-full text-sm border-t border-gray-100">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50/50">
+                      <th className="text-left px-5 py-2 text-xs font-semibold text-gray-500 w-8">#</th>
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500">Panduan Pemeriksaan</th>
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 w-32">PIC</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {area.items.map((item, iIdx) => (
+                      <tr key={iIdx} className="border-b border-gray-50">
+                        <td className="px-5 py-2.5 text-gray-400 font-mono text-xs">{iIdx + 1}</td>
+                        <td className="px-3 py-2.5 text-gray-700 text-xs leading-relaxed">{item.guidance}</td>
+                        <td className="px-3 py-2.5">
+                          {item.pic === 'none'
+                            ? <span className="text-xs text-gray-400">—</span>
+                            : <span className={`badge text-[11px] ${item.pic === 'kapal' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                                {item.pic === 'kapal' ? 'PIC Kapal' : 'PIC Darat'}
+                              </span>}
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {area.items.map((item, iIdx) => (
-                        <tr key={item.id} className="border-b border-gray-50 hover:bg-blue-50/30">
-                          <td className="px-5 py-2.5 text-gray-400 font-mono text-xs">{iIdx + 1}</td>
-                          <td className="px-3 py-2.5 text-gray-700 text-xs leading-relaxed">{item.guidance}</td>
-                          <td className="px-3 py-2.5">
-                            {item.pic === 'none'
-                              ? <span className="text-xs text-gray-400">—</span>
-                              : <span className={`badge text-[11px] ${item.pic === 'kapal' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
-                                  {item.pic === 'kapal' ? 'PIC Kapal' : 'PIC Darat'}
-                                </span>
-                            }
-                          </td>
-                          <td className="px-3 py-2.5">
-                            <div className="flex items-center justify-end gap-1">
-                              <Button variant="ghost" size="sm" onClick={() => store.moveGuidanceItem(area.id, item.id, 'up')} disabled={iIdx === 0} className="h-6 w-6 p-0"><ChevronUp size={11} /></Button>
-                              <Button variant="ghost" size="sm" onClick={() => store.moveGuidanceItem(area.id, item.id, 'down')} disabled={iIdx === area.items.length - 1} className="h-6 w-6 p-0"><ChevronDown size={11} /></Button>
-                              <Button variant="ghost" size="sm" onClick={() => openEditItem(area.id, item)} className="h-6 w-6 p-0"><Edit size={11} /></Button>
-                              <Button variant="ghost" size="sm" className="h-6 w-6 p-0"
-                                onClick={() => { store.deleteGuidanceItem(area.id, item.id); success('Item panduan dihapus', '') }}>
-                                <Trash2 size={11} className="text-red-500" />
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                      {area.items.length === 0 && (
-                        <tr><td colSpan={4} className="px-5 py-6 text-center text-xs text-gray-400">Belum ada item panduan. Klik "Tambah Item".</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                    ))}
+                  </tbody>
+                </table>
               )}
             </Card>
           )
         })}
-        {store.areas.length === 0 && (
-          <div className="text-center py-12 text-sm text-gray-400">Belum ada area inspeksi. Klik "Tambah Area" untuk memulai.</div>
-        )}
       </div>
-
-      <Modal
-        open={modal.open}
-        onClose={() => setModal(s => ({ ...s, open: false }))}
-        title={
-          modal.mode === 'area'
-            ? (modal.areaId ? 'Edit Nama Area' : 'Tambah Area Inspeksi')
-            : (modal.editingItem ? 'Edit Item Panduan' : 'Tambah Item Panduan')
-        }
-        size="sm"
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setModal(s => ({ ...s, open: false }))}>Batal</Button>
-            <Button onClick={handleSave}>{modal.editingItem || (modal.mode === 'area' && modal.areaId) ? 'Simpan Perubahan' : 'Tambah'}</Button>
-          </>
-        }
-      >
-        {modal.mode === 'area' ? (
-          <Input label="Nama Area Inspeksi" required value={modal.areaName}
-            onChange={e => setModal(s => ({ ...s, areaName: e.target.value }))}
-            placeholder="Contoh: Anjungan, Kamar Mesin, Dapur" />
-        ) : (
-          <div className="flex flex-col gap-3">
-            <Textarea label="Panduan Pemeriksaan" required value={modal.itemGuidance}
-              onChange={e => setModal(s => ({ ...s, itemGuidance: e.target.value }))}
-              placeholder="Contoh: Periksa kondisi fisik, penataan dokumen dan peralatan..." rows={4} />
-            <Select label="PIC (Penanggung Jawab)" value={modal.itemPic}
-              onChange={e => setModal(s => ({ ...s, itemPic: e.target.value as PIC }))}
-              options={PIC_OPTIONS} />
-          </div>
-        )}
-      </Modal>
     </div>
   )
 }

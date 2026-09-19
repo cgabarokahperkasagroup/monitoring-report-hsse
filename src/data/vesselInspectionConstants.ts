@@ -73,6 +73,16 @@ export const INSPECTION_AREAS: string[] = INSPECTION_ROWS
   .filter(r => r.area !== undefined)
   .map(r => r.area!)
 
+// Baris dikelompokkan per area, untuk tampilan baca-saja di Master Data.
+export const INSPECTION_AREA_GROUPS: { name: string; items: { pic: PIC; guidance: string }[] }[] = (() => {
+  const groups: { name: string; items: { pic: PIC; guidance: string }[] }[] = []
+  for (const row of INSPECTION_ROWS) {
+    if (row.area !== undefined) groups.push({ name: row.area, items: [] })
+    groups[groups.length - 1]?.items.push({ pic: row.pic, guidance: row.guidance })
+  }
+  return groups
+})()
+
 // Each row tagged with its area index (0-22) for lookup during print
 export const INSPECTION_ROWS_INDEXED = (() => {
   let areaIdx = -1
