@@ -12,8 +12,9 @@ import { useShips, getFleetOptions, shipOptions } from '@/hooks/useShips'
 import { useAuthStore } from '@/stores/authStore'
 import type { UserRole, VisitType, BusinessUnit, Fleet } from '@/types'
 import { resolvePeriod, type PeriodType } from '@/utils/reportPeriod'
-import { buildReport, dataRowCount, type ReportId } from '@/services/reportData'
-import { downloadPdf, downloadXlsx } from '@/services/reportFile'
+import { buildReport, dataRowCount, type ReportFilters, type ReportId } from '@/services/reportData'
+import { downloadPdf, downloadXlsx, reportFileName, type ReportFormat } from '@/services/reportFile'
+import { copyText, createShareLink, type ShareLink } from '@/services/reportShare'
 
 const MONTHS = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -258,7 +259,8 @@ export default function ReportsPage() {
     return parts.join(' · ')
   }, [periodLabel, bu, fleetId, shipId, visitType, buOptions, scopedFleetOptions, filteredShipOptions, constraints])
 
-  const handleGenerate = async (reportId: ReportId, format: string) => {
+  /** Filter aktif di layar, dipakai bersama oleh tombol download dan shareable link. */
+  function buildFilters(): ReportFilters | null {
     const period = resolvePeriod({
       type: periodType,
       month: Number(selectedMonth),
@@ -268,33 +270,78 @@ export default function ReportsPage() {
     })
     if (!period) {
       warning('Periode belum lengkap', 'Isi tanggal mulai dan tanggal akhir (tanggal akhir tidak boleh sebelum tanggal mulai).')
-      return
+      return null
     }
+    return {
+      period,
+      filterSummary,
+      periodLabel,
+      buId: bu,
+      visitType,
+      allowedVisitTypes: constraints.allowedVisitTypes,
+      fleetId: constraints.showFleetFilter ? fleetId : 'ALL',
+      shipId: constraints.showShipFilter ? shipId : 'ALL',
+      ships,
+    }
+  }
+
+  const NO_DATA = 'Tidak ada data yang cocok dengan periode dan filter yang dipilih. Tidak ada berkas yang dibuat.'
+
+  const handleGenerate = async (reportId: ReportId, format: ReportFormat) => {
+    const filters = buildFilters()
+    if (!filters) return
 
     setGenerating(`${reportId}-${format}`)
     try {
-      const doc = await buildReport(reportId, {
-        period,
-        filterSummary,
-        periodLabel,
-        buId: bu,
-        visitType,
-        allowedVisitTypes: constraints.allowedVisitTypes,
-        fleetId: constraints.showFleetFilter ? fleetId : 'ALL',
-        shipId: constraints.showShipFilter ? shipId : 'ALL',
-        ships,
-      })
+      const doc = await buildReport(reportId, filters)
       if (dataRowCount(doc) === 0) {
-        warning('Tidak ada data', 'Tidak ada data yang cocok dengan periode dan filter yang dipilih. Tidak ada berkas yang dibuat.')
+        warning('Tidak ada data', NO_DATA)
         return
       }
       if (format === 'PDF') await downloadPdf(doc)
       else await downloadXlsx(doc)
-      success(`Laporan ${format} berhasil dibuat`, `${doc.fileBase}.${format === 'PDF' ? 'pdf' : 'xlsx'}`)
+      success(`Laporan ${format} berhasil dibuat`, reportFileName(doc, format))
     } catch (err) {
       toastError('Gagal membuat laporan', err instanceof Error ? err.message : String(err))
     } finally {
       setGenerating(null)
+    }
+  }
+
+  // ── Shareable link ────────────────────────────────────────────────────────
+  const [shareReport, setShareReport] = useState<ReportId>('owner-findings')
+  const [shareFormat, setShareFormat] = useState<ReportFormat>('PDF')
+  const [sharing, setSharing] = useState(false)
+  const [shareLink, setShareLink] = useState<(ShareLink & { title: string; summary: string }) | null>(null)
+
+  const handleCreateShareLink = async () => {
+    const filters = buildFilters()
+    if (!filters) return
+
+    setSharing(true)
+    try {
+      const doc = await buildReport(shareReport, filters)
+      if (dataRowCount(doc) === 0) {
+        warning('Tidak ada data', NO_DATA)
+        return
+      }
+      const link = await createShareLink(doc, shareFormat)
+      setShareLink({ ...link, title: doc.title, summary: filters.filterSummary })
+      success('Link berhasil dibuat', 'Berlaku 24 jam. Tekan Salin untuk membagikannya.')
+    } catch (err) {
+      toastError('Gagal membuat link', err instanceof Error ? err.message : String(err))
+    } finally {
+      setSharing(false)
+    }
+  }
+
+  const handleCopyShareLink = async () => {
+    if (!shareLink) return
+    try {
+      await copyText(shareLink.url)
+      success('Link disalin', 'Link laporan berhasil disalin ke clipboard')
+    } catch (err) {
+      toastError('Gagal menyalin link', err instanceof Error ? err.message : String(err))
     }
   }
 
@@ -462,7 +509,7 @@ export default function ReportsPage() {
                     className="flex-1 justify-center"
                     loading={generating === `${report.id}-${fmt}`}
                     disabled={generating !== null}
-                    onClick={() => void handleGenerate(report.id as ReportId, fmt)}
+                    onClick={() => void handleGenerate(report.id as ReportId, fmt as ReportFormat)}
                   >
                     <Download size={14} />
                     {fmt}
@@ -482,21 +529,51 @@ export default function ReportsPage() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-gray-600 mb-3">
-              Generate link sementara untuk laporan yang dapat diakses tanpa login. Link berlaku selama 24 jam.
+              Buat link sementara ke berkas laporan yang dapat dibuka tanpa login. Isinya mengikuti filter di atas
+              saat link dibuat, dan link otomatis tidak berlaku setelah 24 jam.
             </p>
-            <div className="flex gap-3">
-              <input
-                value="https://visit.barokah.co.id/reports/share/abc123..."
-                readOnly
-                className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 bg-gray-50 text-gray-500"
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_140px_auto] gap-3 items-end">
+              <Select
+                id="share-report" label="Laporan"
+                value={shareReport}
+                onChange={e => { setShareReport(e.target.value as ReportId); setShareLink(null) }}
+                options={visibleReports.map(r => ({ value: r.id, label: r.title }))}
               />
-              <Button variant="outline" size="sm" onClick={() => success('Link disalin', 'Link laporan berhasil disalin ke clipboard')}>
-                Salin
-              </Button>
-              <Button size="sm" onClick={() => success('Link baru dibuat', 'Link shareable berlaku 24 jam')}>
+              <Select
+                id="share-format" label="Format"
+                value={shareFormat}
+                onChange={e => { setShareFormat(e.target.value as ReportFormat); setShareLink(null) }}
+                options={[{ value: 'PDF', label: 'PDF' }, { value: 'Excel', label: 'Excel' }]}
+              />
+              <Button size="sm" loading={sharing} disabled={generating !== null} onClick={() => void handleCreateShareLink()}>
                 Generate Link
               </Button>
             </div>
+            <p className="text-xs text-gray-500 mt-2">Filter: {filterSummary}</p>
+
+            {shareLink && (
+              <div className="mt-4 p-3 rounded-lg border border-green-200 bg-green-50 flex flex-col gap-2">
+                <div className="flex gap-2">
+                  <input
+                    value={shareLink.url}
+                    readOnly
+                    onFocus={e => e.currentTarget.select()}
+                    aria-label="Link laporan"
+                    className="flex-1 min-w-0 px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-700"
+                  />
+                  <Button variant="outline" size="sm" onClick={() => void handleCopyShareLink()}>
+                    Salin
+                  </Button>
+                </div>
+                <p className="text-xs text-green-800">
+                  <strong>{shareLink.title}</strong> ({shareLink.fileName}) · {shareLink.summary}
+                </p>
+                <p className="text-xs text-green-700">
+                  Berlaku sampai {shareLink.expiresAt.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}.
+                  Siapa pun yang memegang link ini dapat membuka berkasnya sampai waktu tersebut.
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
