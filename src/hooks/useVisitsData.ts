@@ -64,7 +64,9 @@ export function useVisit(id: string | undefined) {
     setError(null)
 
     const [visitRes, findingsRes] = await Promise.all([
-      supabase.from('visits').select(VISIT_SELECT).eq('id', id).single(),
+      // maybeSingle: id yang tidak ada (atau disaring RLS) adalah "tidak ditemukan",
+      // bukan error — .single() melempar PGRST116 yang lalu tampil mentah ke pengguna.
+      supabase.from('visits').select(VISIT_SELECT).eq('id', id).maybeSingle(),
       supabase.from('findings').select(`
         *,
         business_unit:business_units_mh(*),
@@ -77,6 +79,7 @@ export function useVisit(id: string | undefined) {
     ])
 
     if (visitRes.error) { setError(visitRes.error.message); setLoading(false); return }
+    if (!visitRes.data) { setVisit(null); setFindings([]); setLoading(false); return }
     setVisit(mapVisit(visitRes.data as unknown as Record<string, unknown>))
     setFindings(((findingsRes.data ?? []) as unknown[]).map(mapFinding))
     setLoading(false)
