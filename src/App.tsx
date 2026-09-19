@@ -36,21 +36,36 @@ import CreateVisitPlanPage from '@/pages/CreateVisitPlanPage'
 import CreateVisitRealisasiPage from '@/pages/CreateVisitRealisasiPage'
 import VesselComplianceVisitDetailPage from '@/pages/VesselComplianceVisitDetailPage'
 
+/** Ditampilkan sebentar saat sesi Supabase sedang diperiksa setelah halaman dimuat. */
+function SessionCheck() {
+  return (
+    <div className="min-h-screen flex items-center justify-center text-sm text-gray-500">
+      Memeriksa sesi…
+    </div>
+  )
+}
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated } = useAuthStore()
+  const { isAuthenticated, initialized } = useAuthStore()
+  // Jangan memutuskan sebelum sesi diperiksa: status login tidak lagi dipersist,
+  // jadi tanpa ini setiap reload sempat terlempar ke /login.
+  if (!initialized) return <SessionCheck />
   if (!isAuthenticated) return <Navigate to="/login" replace />
   return <>{children}</>
 }
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated } = useAuthStore()
+  const { isAuthenticated, initialized } = useAuthStore()
+  if (!initialized) return <SessionCheck />
   if (isAuthenticated) return <Navigate to="/dashboard" replace />
   return <>{children}</>
 }
 
 export default function App() {
-  const { initSession } = useAuthStore()
+  const { initSession, listenAuthChanges } = useAuthStore()
   useEffect(() => { initSession() }, [initSession])
+  // Keluarkan pengguna begitu sesinya berakhir saat aplikasi sedang terbuka.
+  useEffect(() => listenAuthChanges(), [listenAuthChanges])
 
   return (
     <ToastProvider>
