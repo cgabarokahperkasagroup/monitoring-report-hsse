@@ -8,14 +8,18 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { INSPECTION_SCHEDULE_STATUS_OPTIONS } from '@/data/masterOptions'
 import { useAuthStore } from '@/stores/authStore'
-import { supabase } from '@/lib/supabase'
 import { useVisitSchedulesData } from '@/hooks/useVisitSchedulesData'
 import { useShips, getFleetOptions, shipOptions } from '@/hooks/useShips'
 import { formatDateShort } from '@/utils'
 import type { VisitScheduleStatus } from '@/types'
+import { useToast } from '@/components/ui/toast'
+import { lastDayOfMonth, resolvePeriod } from '@/utils/reportPeriod'
+import { computeFleetCompliance } from '@/utils/vesselCompliance'
+import { buildComplianceDoc, fetchComplianceVisits, type ComplianceVisitRow } from '@/services/reportData'
+import { downloadXlsx } from '@/services/reportFile'
 
-const currentMonth: number = 6
-const currentYear:  number = 2026
+const currentMonth: number = new Date().getMonth() + 1
+const currentYear:  number = new Date().getFullYear()
 
 // ── Status config ─────────────────────────────────────────────────────────────
 
@@ -30,20 +34,13 @@ function getScheduleStatusConfig(status: VisitScheduleStatus) {
   }
 }
 
-// ── Tipe data visit untuk compliance ─────────────────────────────────────────
-
-type VisitRecord = {
-  id: string
-  vessel_external_id: number | null
-  vessel_name: string | null
-  visit_date: string
-}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function VesselCompliancePage() {
   const navigate  = useNavigate()
   const { user }  = useAuthStore()
+  const { success, error: toastError, warning } = useToast()
 
   const canManagePlan = user?.role === 'HEAD_HSSE' || user?.role === 'SUPER_ADMIN'
 
@@ -69,7 +66,7 @@ export default function VesselCompliancePage() {
   const { schedules } = useVisitSchedulesData()
 
   // Visits aktual (untuk compliance)
-  const [vesselVisits, setVesselVisits] = useState<VisitRecord[]>([])
+  const [vesselVisits, setVesselVisits] = useState<ComplianceVisitRow[]>([])
 
   // ── Plan tab state ──────────────────────────────────────────────────────────
   const [tab, setTab] = useState<'plan' | 'actual'>('plan')
@@ -85,7 +82,7 @@ export default function VesselCompliancePage() {
   const [filterMonth,       setFilterMonth]       = useState(currentMonth)
   const [filterYear,        setFilterYear]        = useState(currentYear)
   const [fromDate,          setFromDate]          = useState(`${currentYear}-${String(currentMonth).padStart(2,'0')}-01`)
-  const [toDate,            setToDate]            = useState(`${currentYear}-${String(currentMonth).padStart(2,'0')}-30`)
+  const [toDate,            setToDate]            = useState(`${currentYear}-${String(currentMonth).padStart(2,'0')}-${String(lastDayOfMonth(currentYear, currentMonth)).padStart(2,'0')}`)
   const [visitStatusFilter, setVisitStatusFilter] = useState<'ALL'|'VISITED'|'NOT_VISITED'>('ALL')
   const [vesselSearch,      setVesselSearch]      = useState('')
   const [complianceFilter,  setComplianceFilter]  = useState<'ALL'|'HIGH'|'MID'|'LOW'>('ALL')
@@ -93,26 +90,24 @@ export default function VesselCompliancePage() {
   // ── Fetch visits untuk compliance ───────────────────────────────────────────
 
   useEffect(() => {
-     
-    let q = (supabase.from('visits') as any)
-      .select('id, vessel_external_id, vessel_name, visit_date')
-      .eq('visit_type', 'VESSEL_VISIT')
-      .in('status', ['SUBMITTED', 'APPROVED'])
-
-    if (periodMode === 'month') {
-      const pad = (n: number) => String(n).padStart(2, '0')
-      q = q.gte('visit_date', `${filterYear}-${pad(filterMonth)}-01`)
-           .lte('visit_date', `${filterYear}-${pad(filterMonth)}-31`)
-    } else if (periodMode === 'year') {
-      q = q.gte('visit_date', `${filterYear}-01-01`).lte('visit_date', `${filterYear}-12-31`)
-    } else {
-      q = q.gte('visit_date', fromDate).lte('visit_date', toDate)
-    }
-
-    q.then(({ data }: { data: VisitRecord[] | null }) => {
-      setVesselVisits((data ?? []).filter((v: VisitRecord) => v.vessel_external_id != null))
+    const period = resolvePeriod({
+      type: periodMode, month: filterMonth, year: filterYear, dateFrom: fromDate, dateTo: toDate,
     })
-  }, [periodMode, filterMonth, filterYear, fromDate, toDate])
+    if (!period) {
+      setVesselVisits([])
+      return
+    }
+    // Query yang sama dengan laporan ekspor, supaya angka layar & berkas selalu sama.
+    let cancelled = false
+    fetchComplianceVisits(period)
+      .then(rows => { if (!cancelled) setVesselVisits(rows) })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setVesselVisits([])
+        toastError('Gagal memuat realisasi kunjungan', err instanceof Error ? err.message : String(err))
+      })
+    return () => { cancelled = true }
+  }, [periodMode, filterMonth, filterYear, fromDate, toDate, toastError])
 
   // ── Plan tab computed ───────────────────────────────────────────────────────
 
@@ -154,33 +149,10 @@ export default function VesselCompliancePage() {
   const prevMonthNum = currentMonth === 1 ? 12 : currentMonth - 1
   const prevYearNum  = currentMonth === 1 ? currentYear - 1 : currentYear
 
-  const complianceData = useMemo(() => {
-    return smsFleets
-      .filter(f => selectedFleet === 'ALL' || String(f.id) === selectedFleet)
-      .map(fleet => {
-        const fleetShips = ships.filter(s => s.fleet.id === fleet.id)
-        const visitedIds = new Set(
-          vesselVisits
-            .filter(v => fleetShips.some(s => s.id === v.vessel_external_id))
-            .map(v => v.vessel_external_id)
-        )
-        const allVesselStatus = fleetShips.map(ship => {
-          const rec = vesselVisits.find(v => v.vessel_external_id === ship.id)
-          return { ship, visited: !!rec, visitDate: rec?.visit_date }
-        })
-        const compliancePct = fleetShips.length > 0
-          ? Math.round((visitedIds.size / fleetShips.length) * 100)
-          : 0
-        return {
-          fleet,
-          opHeadName: fleet.opHeadName,
-          ships: fleetShips,
-          allVesselStatus,
-          compliance: compliancePct,
-          visited: visitedIds.size,
-        }
-      })
-  }, [smsFleets, ships, vesselVisits, selectedFleet])
+  const complianceData = useMemo(
+    () => computeFleetCompliance(ships, vesselVisits, selectedFleet),
+    [ships, vesselVisits, selectedFleet],
+  )
 
   const displayData = useMemo(() => complianceData
     .filter(d => {
@@ -211,6 +183,40 @@ export default function VesselCompliancePage() {
 
   const periodChanged  = periodMode !== 'month' || filterMonth !== currentMonth || filterYear !== currentYear
   const hasActualFilter = periodChanged || selectedFleet !== 'ALL' || visitStatusFilter !== 'ALL' || vesselSearch !== '' || complianceFilter !== 'ALL'
+
+  const [exporting, setExporting] = useState(false)
+
+  /** Ekspor persis yang tampil: periode, fleet, band kepatuhan, status & pencarian kapal. */
+  async function handleExportCompliance() {
+    if (displayData.length === 0) {
+      warning('Tidak ada data', 'Tidak ada fleet yang cocok dengan filter saat ini. Tidak ada berkas yang dibuat.')
+      return
+    }
+    const periodText = periodMode === 'month'
+      ? `${monthNames[filterMonth - 1]} ${filterYear}`
+      : periodMode === 'year' ? `Tahun ${filterYear}` : `${fromDate} s/d ${toDate}`
+    const parts = [periodText]
+    if (selectedFleet !== 'ALL') {
+      parts.push(complianceData.find(d => String(d.fleet.id) === selectedFleet)?.fleet.name ?? selectedFleet)
+    }
+    if (visitStatusFilter === 'VISITED') parts.push('Hanya kapal yang dikunjungi')
+    if (visitStatusFilter === 'NOT_VISITED') parts.push('Hanya kapal yang belum dikunjungi')
+    if (complianceFilter !== 'ALL') {
+      parts.push(`Kepatuhan ${complianceFilter === 'HIGH' ? '≥80%' : complianceFilter === 'MID' ? '60–79%' : '<60%'}`)
+    }
+    if (vesselSearch) parts.push(`Cari kapal: "${vesselSearch}"`)
+
+    setExporting(true)
+    try {
+      const doc = buildComplianceDoc(displayData, { filterSummary: parts.join(' · '), periodLabel: periodText })
+      await downloadXlsx(doc)
+      success('Laporan Excel berhasil dibuat', `${doc.fileBase}.xlsx`)
+    } catch (err) {
+      toastError('Gagal membuat laporan', err instanceof Error ? err.message : String(err))
+    } finally {
+      setExporting(false)
+    }
+  }
 
   const resetActualFilters = () => {
     setPeriodMode('month')
@@ -487,7 +493,7 @@ export default function VesselCompliancePage() {
                 Filter Realisasi Kunjungan
               </h3>
               <div className="flex items-center gap-3">
-                <Button variant="outline" size="sm">Export Excel</Button>
+                <Button variant="outline" size="sm" loading={exporting} onClick={() => void handleExportCompliance()}>Export Excel</Button>
                 {hasActualFilter && (
                   <button onClick={resetActualFilters}
                     className="text-xs text-red-500 hover:text-red-700 font-medium flex items-center gap-1">
