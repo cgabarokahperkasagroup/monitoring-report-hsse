@@ -15,9 +15,10 @@ import {
 } from '@/utils'
 import {
   PREP_OFFICE_ITEMS, PREP_VESSEL_ITEMS, INSPECTION_AREAS,
-  defaultInspectionData, inspectionStorageKey,
-  type VesselInspectionData, type AreaCheck,
+  type AreaCheck,
 } from '@/data/vesselInspectionConstants'
+import { useInspectionReport, type ReportSaveStatus } from '@/hooks/useInspectionReport'
+import { uploadReportPhotos } from '@/services/visitInspectionReport'
 import type { FindingPriority } from '@/types'
 
 export default function VisitDetailPage() {
@@ -34,39 +35,11 @@ export default function VisitDetailPage() {
 
   const { visit, findings, loading, error: visitError, approveVisit, rejectVisit, submitVisit, addFinding } = useVisit(id)
 
-  // ── Inspection checklist state ───────────────────────────────────────────────
-  const storageKey = id ? inspectionStorageKey(id) : ''
-  const [inspection, setInspection] = useState<VesselInspectionData>(() => {
-    if (!id) return defaultInspectionData(undefined, undefined)
-    const stored = sessionStorage.getItem(inspectionStorageKey(id))
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored)
-        return {
-          ...defaultInspectionData(undefined, undefined),
-          ...parsed,
-          visitPhotos: Array.isArray(parsed.visitPhotos) ? parsed.visitPhotos : [],
-          attendancePhotos: Array.isArray(parsed.attendancePhotos) ? parsed.attendancePhotos : [],
-        }
-      } catch { /* ignore */ }
-    }
-    return defaultInspectionData(undefined, undefined)
-  })
-
-  // Seed inspection defaults from visit once loaded (only if no sessionStorage entry)
-  useEffect(() => {
-    if (!visit || !id) return
-    const stored = sessionStorage.getItem(inspectionStorageKey(id))
-    if (!stored) {
-      setInspection(defaultInspectionData(visit.agenda, visit.summary))
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visit?.id])
-
-  // Auto-save to sessionStorage whenever checklist data changes
-  useEffect(() => {
-    if (storageKey) sessionStorage.setItem(storageKey, JSON.stringify(inspection))
-  }, [inspection, storageKey])
+  // ── Isian laporan inspeksi — disimpan di database (sebelumnya hanya sessionStorage) ──
+  const {
+    report: inspection, update: setInspection, save: saveReport,
+    status: reportStatus, savedAt: reportSavedAt, errorMessage: reportError, editable: reportEditable,
+  } = useInspectionReport(id, visit?.agenda, visit?.summary, !!visit)
 
   if (loading) return (
     <div className="flex items-center justify-center h-64">
@@ -113,13 +86,16 @@ export default function VisitDetailPage() {
       return { ...p, areas: arr }
     })
 
-  const handleSaveChecklist = () => {
-    sessionStorage.setItem(storageKey, JSON.stringify(inspection))
-    success('Checklist disimpan', 'Data akan otomatis terisi saat cetak laporan')
+  const handleSaveChecklist = async () => {
+    if (await saveReport()) success('Laporan disimpan', 'Isian tersimpan di server dan dapat dilihat pengguna lain yang berwenang')
+    else error('Gagal menyimpan laporan', 'Periksa koneksi lalu coba lagi')
   }
 
-  const handlePrint = () => {
-    sessionStorage.setItem(storageKey, JSON.stringify(inspection))
+  const handlePrint = async () => {
+    // Cetak membaca dari database, jadi pastikan perubahan terakhir sudah tersimpan.
+    if (reportStatus !== 'saved' && !(await saveReport())) {
+      error('Gagal menyimpan laporan', 'Laporan cetak mungkin belum memuat perubahan terakhir')
+    }
     navigate(`/visits/${id}/print`)
   }
 
@@ -258,6 +234,19 @@ export default function VisitDetailPage() {
 
           {checklistOpen && (
             <CardContent className="p-0 border-t border-gray-100">
+              {!reportEditable ? (
+                <div className="p-6 text-sm text-center">
+                  {reportStatus === 'error' ? (
+                    <div className="flex flex-col items-center gap-2 text-red-600">
+                      <p>Gagal memuat isian laporan dari server.</p>
+                      {reportError && <p className="text-xs text-red-500">{reportError}</p>}
+                      <Button variant="outline" size="sm" onClick={() => window.location.reload()}>Muat ulang</Button>
+                    </div>
+                  ) : (
+                    <p className="text-gray-500">Memuat isian laporan…</p>
+                  )}
+                </div>
+              ) : (
               <div className="p-6 flex flex-col gap-6">
 
                 {/* ── Section A ──────────────────────────────────────────────── */}
@@ -408,6 +397,8 @@ export default function VisitDetailPage() {
                   <p className="text-sm font-semibold text-[#1B3A6B] mb-1">F. Foto Selama Kunjungan di Kapal</p>
                   <p className="text-xs text-gray-500 mb-2">Upload satu atau lebih foto dokumentasi kunjungan. Foto akan muncul di laporan cetak.</p>
                   <PhotoPicker
+                    visitId={id!}
+                    onError={msg => error('Gagal mengunggah foto', msg)}
                     photos={inspection.visitPhotos}
                     onAdd={newPhotos => setInspection(p => ({ ...p, visitPhotos: [...p.visitPhotos, ...newPhotos] }))}
                     onRemove={idx => setInspection(p => ({ ...p, visitPhotos: p.visitPhotos.filter((_, i) => i !== idx) }))}
@@ -419,6 +410,8 @@ export default function VisitDetailPage() {
                   <p className="text-sm font-semibold text-[#1B3A6B] mb-1">Lampiran 1: Foto Daftar Hadir</p>
                   <p className="text-xs text-gray-500 mb-2">Upload foto daftar hadir yang sudah ditandatangani secara manual. Bisa lebih dari 1 foto.</p>
                   <PhotoPicker
+                    visitId={id!}
+                    onError={msg => error('Gagal mengunggah foto', msg)}
                     photos={inspection.attendancePhotos}
                     onAdd={newPhotos => setInspection(p => ({ ...p, attendancePhotos: [...p.attendancePhotos, ...newPhotos] }))}
                     onRemove={idx => setInspection(p => ({ ...p, attendancePhotos: p.attendancePhotos.filter((_, i) => i !== idx) }))}
@@ -427,7 +420,7 @@ export default function VisitDetailPage() {
 
                 {/* ── Action buttons ──────────────────────────────────────── */}
                 <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                  <p className="text-xs text-gray-400">Data otomatis tersimpan saat diubah. Klik "Cetak Laporan" untuk menghasilkan dokumen laporan kunjungan.</p>
+                  <ReportSaveIndicator status={reportStatus} savedAt={reportSavedAt} error={reportError} />
                   <div className="flex items-center gap-2">
                     <Button variant="outline" size="sm" onClick={handleSaveChecklist}>
                       <CheckCircle size={14} /> Simpan Checklist
@@ -439,6 +432,7 @@ export default function VisitDetailPage() {
                 </div>
 
               </div>
+              )}
             </CardContent>
           )}
         </Card>
@@ -642,47 +636,34 @@ function YNToggle({ value, onChange }: { value: 'Y' | 'N' | ''; onChange: (v: 'Y
 }
 
 // ─── Photo compression (canvas, max 1400px wide, 75% JPEG) ────────────────────
-function compressPhoto(file: File): Promise<string> {
-  return new Promise(resolve => {
-    const img = new window.Image()
-    const objectUrl = URL.createObjectURL(file)
-    img.onload = () => {
-      const MAX = 1400
-      const ratio = Math.min(1, MAX / Math.max(img.width, img.height))
-      const canvas = document.createElement('canvas')
-      canvas.width = Math.round(img.width * ratio)
-      canvas.height = Math.round(img.height * ratio)
-      canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height)
-      URL.revokeObjectURL(objectUrl)
-      resolve(canvas.toDataURL('image/jpeg', 0.75))
-    }
-    img.onerror = () => { URL.revokeObjectURL(objectUrl); resolve('') }
-    img.src = objectUrl
-  })
-}
-
 // ─── Photo picker component ────────────────────────────────────────────────────
 function PhotoPicker({
-  photos, onAdd, onRemove,
+  visitId, photos, onAdd, onRemove, onError,
 }: {
+  visitId: string
   photos: string[]
-  onAdd: (base64List: string[]) => void
+  onAdd: (urls: string[]) => void
   onRemove: (idx: number) => void
+  onError: (message: string) => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [loading, setLoading] = useState(false)
 
+  // Foto diunggah ke Storage dan yang disimpan di laporan hanya URL-nya.
+  // Sebelumnya foto disimpan sebagai base64 di sessionStorage, yang hilang
+  // saat tab ditutup dan bisa melampaui kuota browser.
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return
     setLoading(true)
-    const results: string[] = []
-    for (const file of Array.from(files)) {
-      if (!file.type.startsWith('image/')) continue
-      const b64 = await compressPhoto(file)
-      if (b64) results.push(b64)
+    try {
+      const urls = await uploadReportPhotos(visitId, Array.from(files))
+      if (urls.length) onAdd(urls)
+    } catch (err) {
+      onError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setLoading(false)
+      if (inputRef.current) inputRef.current.value = ''
     }
-    onAdd(results)
-    setLoading(false)
   }
 
   return (
@@ -807,4 +788,14 @@ function AddFindingModal({ open, onClose, onSave }: {
       </div>
     </Modal>
   )
+}
+
+// ─── Indikator penyimpanan laporan ─────────────────────────────────────────────
+function ReportSaveIndicator({ status, savedAt, error }: { status: ReportSaveStatus; savedAt: string | null; error: string | null }) {
+  const jam = savedAt ? new Date(savedAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : null
+  if (status === 'saving') return <p className="text-xs text-gray-500">Menyimpan ke server…</p>
+  if (status === 'error') return <p className="text-xs text-red-600" title={error ?? undefined}>Gagal menyimpan ke server — perubahan belum aman. Tekan Simpan Checklist untuk mencoba lagi.</p>
+  if (status === 'idle') return <p className="text-xs text-amber-600">Ada perubahan belum tersimpan…</p>
+  if (status === 'saved' && jam) return <p className="text-xs text-green-700">Tersimpan di server pukul {jam}. Perubahan disimpan otomatis.</p>
+  return <p className="text-xs text-gray-400">Perubahan disimpan otomatis ke server.</p>
 }

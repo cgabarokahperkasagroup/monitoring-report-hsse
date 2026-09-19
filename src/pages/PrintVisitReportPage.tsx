@@ -6,9 +6,10 @@ import { formatDate } from '@/utils'
 import {
   PREP_OFFICE_ITEMS, PREP_VESSEL_ITEMS,
   INSPECTION_ROWS_INDEXED,
-  defaultInspectionData, inspectionStorageKey,
+  defaultInspectionData,
   type VesselInspectionData,
 } from '@/data/vesselInspectionConstants'
+import { fetchInspectionReport } from '@/services/visitInspectionReport'
 
 // ─── Print styles (inline for cross-browser print compatibility) ───────────────
 const S = {
@@ -59,18 +60,23 @@ export default function PrintVisitReportPage() {
 
   const { visit, findings, loading } = useVisit(id)
 
-  // Read inspection data from sessionStorage (filled in VisitDetailPage)
+  // Isian laporan dibaca dari database (sebelumnya dari sessionStorage, sehingga
+  // cetak hanya berfungsi di tab yang sama dengan pengisinya).
   const [inspection, setInspection] = useState<VesselInspectionData | null>(null)
+  const [reportLoadError, setReportLoadError] = useState<string | null>(null)
   useEffect(() => {
     if (!id || !visit) return
-    const stored = sessionStorage.getItem(inspectionStorageKey(id))
-    if (stored) {
-      try {
-        setInspection(JSON.parse(stored))
-        return
-      } catch { /* ignore */ }
-    }
-    setInspection(defaultInspectionData(visit.agenda, visit.summary))
+    let cancelled = false
+    fetchInspectionReport(id, visit.agenda, visit.summary)
+      .then(stored => {
+        if (!cancelled) setInspection(stored?.data ?? defaultInspectionData(visit.agenda, visit.summary))
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setReportLoadError(err instanceof Error ? err.message : String(err))
+        setInspection(defaultInspectionData(visit.agenda, visit.summary))
+      })
+    return () => { cancelled = true }
     // Re-run only when the visit identity changes; agenda/summary are stable per visit id.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, visit?.id])
@@ -126,6 +132,11 @@ export default function PrintVisitReportPage() {
         </button>
       </div>
       <div className="no-print pt-16" />
+      {reportLoadError && (
+        <div className="no-print mx-auto max-w-[210mm] mb-3 px-4 py-2 rounded bg-red-50 border border-red-200 text-sm text-red-700">
+          Gagal memuat isian laporan dari server, jadi checklist di bawah tampil kosong. Muat ulang halaman sebelum mencetak. ({reportLoadError})
+        </div>
+      )}
 
       {/* ══ Print content ═════════════════════════════════════════════════════════ */}
       <div className="print-area" style={S.page}>
