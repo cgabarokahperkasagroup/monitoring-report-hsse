@@ -11,8 +11,9 @@ import { supabase } from '@/lib/supabase'
 import { useShips, getFleetOptions, shipOptions } from '@/hooks/useShips'
 import { useAuthStore } from '@/stores/authStore'
 import type { UserRole, VisitType, BusinessUnit, Fleet } from '@/types'
-
-type PeriodType = 'range' | 'month' | 'year'
+import { resolvePeriod, type PeriodType } from '@/utils/reportPeriod'
+import { buildReport, dataRowCount, type ReportId } from '@/services/reportData'
+import { downloadPdf, downloadXlsx } from '@/services/reportFile'
 
 const MONTHS = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -138,7 +139,7 @@ const dateInputClass =
   'px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white focus:border-[#1B3A6B] focus:ring-2 focus:ring-[#1B3A6B]/20 outline-none transition-all w-full'
 
 export default function ReportsPage() {
-  const { success } = useToast()
+  const { success, error: toastError, warning } = useToast()
   const { user } = useAuthStore()
   const { ships } = useShips()
 
@@ -257,11 +258,44 @@ export default function ReportsPage() {
     return parts.join(' · ')
   }, [periodLabel, bu, fleetId, shipId, visitType, buOptions, scopedFleetOptions, filteredShipOptions, constraints])
 
-  const handleGenerate = async (reportId: string, format: string) => {
+  const handleGenerate = async (reportId: ReportId, format: string) => {
+    const period = resolvePeriod({
+      type: periodType,
+      month: Number(selectedMonth),
+      year: Number(selectedYear),
+      dateFrom,
+      dateTo,
+    })
+    if (!period) {
+      warning('Periode belum lengkap', 'Isi tanggal mulai dan tanggal akhir (tanggal akhir tidak boleh sebelum tanggal mulai).')
+      return
+    }
+
     setGenerating(`${reportId}-${format}`)
-    await new Promise(r => setTimeout(r, 1500))
-    setGenerating(null)
-    success(`Laporan ${format} berhasil dibuat`, 'File akan diunduh secara otomatis')
+    try {
+      const doc = await buildReport(reportId, {
+        period,
+        filterSummary,
+        periodLabel,
+        buId: bu,
+        visitType,
+        allowedVisitTypes: constraints.allowedVisitTypes,
+        fleetId: constraints.showFleetFilter ? fleetId : 'ALL',
+        shipId: constraints.showShipFilter ? shipId : 'ALL',
+        ships,
+      })
+      if (dataRowCount(doc) === 0) {
+        warning('Tidak ada data', 'Tidak ada data yang cocok dengan periode dan filter yang dipilih. Tidak ada berkas yang dibuat.')
+        return
+      }
+      if (format === 'PDF') await downloadPdf(doc)
+      else await downloadXlsx(doc)
+      success(`Laporan ${format} berhasil dibuat`, `${doc.fileBase}.${format === 'PDF' ? 'pdf' : 'xlsx'}`)
+    } catch (err) {
+      toastError('Gagal membuat laporan', err instanceof Error ? err.message : String(err))
+    } finally {
+      setGenerating(null)
+    }
   }
 
   const isLocked = (field: 'bu' | 'fleet' | 'visitType') => {
@@ -427,7 +461,8 @@ export default function ReportsPage() {
                     size="sm"
                     className="flex-1 justify-center"
                     loading={generating === `${report.id}-${fmt}`}
-                    onClick={() => handleGenerate(report.id, fmt)}
+                    disabled={generating !== null}
+                    onClick={() => void handleGenerate(report.id as ReportId, fmt)}
                   >
                     <Download size={14} />
                     {fmt}
