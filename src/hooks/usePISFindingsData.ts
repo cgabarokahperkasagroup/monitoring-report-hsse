@@ -164,9 +164,9 @@ export function usePISFindingsData() {
   }
 }
 
-// Re-export helpers from pisKapalStore so pages don't need to change imports
+// Re-export helper label/warna agar impor di halaman-halaman PIS tidak berubah
 export {
   getPISStatusLabel, getPISStatusColor,
   getPISTemuanLabel, getPISTemuanColor,
   getPISPerusahaanColor,
-} from '@/stores/pisKapalStore'
+} from '@/utils/pisLabels'
