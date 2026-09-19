@@ -1,5 +1,6 @@
 /**
- * Menulis laporan menjadi berkas Excel atau PDF dan memicu unduhan di browser.
+ * Menulis laporan menjadi berkas Excel atau PDF: sebagai Blob (render*) atau
+ * langsung diunduh di browser (download*).
  *
  * Berkas ini tidak tahu apa-apa soal Supabase maupun isi laporan: ia menerima
  * ReportDoc yang sudah jadi. Library-nya (exceljs, jspdf) dimuat saat tombol
@@ -31,6 +32,17 @@ export interface ReportDoc {
   sheets: ReportSheet[]
   /** Catatan untuk pembaca, ditaruh di akhir laporan. */
   notes?: string[]
+}
+
+export type ReportFormat = 'Excel' | 'PDF'
+
+export const REPORT_MIME: Record<ReportFormat, string> = {
+  Excel: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  PDF: 'application/pdf',
+}
+
+export function reportFileName(doc: ReportDoc, format: ReportFormat): string {
+  return `${doc.fileBase}.${format === 'PDF' ? 'pdf' : 'xlsx'}`
 }
 
 const NAVY = 'FF1B3A6B'
@@ -78,7 +90,7 @@ function pdfSafe(text: string): string {
     .replace(/[^\t\n\r\u0020-\u00FF]/gu, ch => PDF_REPLACEMENTS[ch] ?? (WIN_ANSI_EXTRA.has(ch) ? ch : '?'))
 }
 
-export async function downloadXlsx(doc: ReportDoc): Promise<void> {
+export async function renderXlsx(doc: ReportDoc): Promise<Blob> {
   const { default: ExcelJS } = await import('exceljs')
   const wb = new ExcelJS.Workbook()
   wb.creator = 'Monitoring & Manajemen Visit'
@@ -152,13 +164,14 @@ export async function downloadXlsx(doc: ReportDoc): Promise<void> {
   })
 
   const buf = await wb.xlsx.writeBuffer()
-  saveBlob(
-    new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
-    `${doc.fileBase}.xlsx`,
-  )
+  return new Blob([buf], { type: REPORT_MIME.Excel })
 }
 
-export async function downloadPdf(doc: ReportDoc): Promise<void> {
+export async function downloadXlsx(doc: ReportDoc): Promise<void> {
+  saveBlob(await renderXlsx(doc), reportFileName(doc, 'Excel'))
+}
+
+export async function renderPdf(doc: ReportDoc): Promise<Blob> {
   const [{ jsPDF }, { default: autoTable }] = await Promise.all([
     import('jspdf'),
     import('jspdf-autotable'),
@@ -235,5 +248,9 @@ export async function downloadPdf(doc: ReportDoc): Promise<void> {
     pdf.text(`Halaman ${i} dari ${pages}`, pageW - margin, pdf.internal.pageSize.getHeight() - 6, { align: 'right' })
   }
 
-  pdf.save(`${doc.fileBase}.pdf`)
+  return pdf.output('blob')
+}
+
+export async function downloadPdf(doc: ReportDoc): Promise<void> {
+  saveBlob(await renderPdf(doc), reportFileName(doc, 'PDF'))
 }
